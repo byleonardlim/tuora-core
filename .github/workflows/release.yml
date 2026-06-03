@@ -2,21 +2,110 @@ name: Release
 
 on:
   push:
+    branches: [main]
     tags:
       - 'v[0-9]+.[0-9]+.[0-9]+*'
   workflow_dispatch:
     inputs:
-      version:
-        description: 'Version to release (e.g., v0.1.0-alpha.1)'
+      bump:
+        description: 'Version bump type'
         required: true
-        type: string
+        default: 'patch'
+        type: choice
+        options:
+          - patch
+          - minor
+          - major
+          - none
 
 env:
   CARGO_TERM_COLOR: always
 
 jobs:
+  bump-version:
+    name: Bump Version
+    # Skip if triggered by tag push OR if this is an automated release commit
+    if: |
+      (github.event_name == 'workflow_dispatch' || 
+       (github.event_name == 'push' && github.ref == 'refs/heads/main')) &&
+      !startsWith(github.event.head_commit.message, 'chore: release v')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    outputs:
+      version: ${{ steps.bump.outputs.version }}
+      tag: ${{ steps.bump.outputs.tag }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Check if already released
+        id: check
+        run: |
+          # Check if last commit was already a release
+          if git log -1 --pretty=%B | grep -q "^chore: release v"; then
+            echo "Already released, skipping"
+            echo "skip=true" >> $GITHUB_OUTPUT
+            exit 0
+          fi
+          echo "skip=false" >> $GITHUB_OUTPUT
+
+      - name: Bump version
+        if: steps.check.outputs.skip != 'true'
+        id: bump
+        run: |
+          CURRENT=$(grep '^version' core/Cargo.toml | head -1 | sed 's/.*"\(.*\)".*/\1/')
+          echo "Current: $CURRENT"
+
+          MAJOR=$(echo $CURRENT | cut -d. -f1)
+          MINOR=$(echo $CURRENT | cut -d. -f2)
+          PATCH=$(echo $CURRENT | cut -d. -f3)
+
+          BUMP="${{ github.event.inputs.bump }}"
+          # Auto patch bump on main push if no bump specified
+          if [ -z "$BUMP" ] || [ "$BUMP" = "none" ]; then
+            BUMP="patch"
+          fi
+
+          case "$BUMP" in
+            major)
+              MAJOR=$((MAJOR + 1))
+              MINOR=0
+              PATCH=0
+              ;;
+            minor)
+              MINOR=$((MINOR + 1))
+              PATCH=0
+              ;;
+            patch)
+              PATCH=$((PATCH + 1))
+              ;;
+          esac
+
+          NEW="$MAJOR.$MINOR.$PATCH"
+          echo "New: $NEW"
+          echo "version=$NEW" >> $GITHUB_OUTPUT
+          echo "tag=v$NEW" >> $GITHUB_OUTPUT
+
+          # Update Cargo.toml
+          sed -i "s/^version = \"$CURRENT\"/version = \"$NEW\"/" core/Cargo.toml
+
+          git config user.name "GitHub Actions"
+          git config user.email "actions@github.com"
+          git add core/Cargo.toml
+          git commit -m "chore: release v$NEW"
+          git tag "v$NEW"
+
+      - name: Push changes
+        if: steps.check.outputs.skip != 'true'
+        run: |
+          git push origin main
+          git push origin "v${{ steps.bump.outputs.version }}"
+
   test:
     name: Quality Checks
+    if: github.event_name != 'workflow_dispatch'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -28,6 +117,7 @@ jobs:
 
   build:
     name: Build ${{ matrix.target }}
+    if: github.event_name != 'workflow_dispatch'
     needs: test
     runs-on: ${{ matrix.os }}
     strategy:
