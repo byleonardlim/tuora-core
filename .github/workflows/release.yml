@@ -2,7 +2,6 @@ name: Release
 
 on:
   push:
-    branches: [main]
     tags:
       - 'v[0-9]+.[0-9]+.[0-9]+*'
   workflow_dispatch:
@@ -24,11 +23,7 @@ env:
 jobs:
   bump-version:
     name: Bump Version
-    # Skip if triggered by tag push OR if this is an automated release commit
-    if: |
-      (github.event_name == 'workflow_dispatch' || 
-       (github.event_name == 'push' && github.ref == 'refs/heads/main')) &&
-      !startsWith(github.event.head_commit.message, 'chore: release v')
+    if: github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -55,7 +50,7 @@ jobs:
         if: steps.check.outputs.skip != 'true'
         id: bump
         run: |
-          CURRENT=$(grep '^version' core/Cargo.toml | head -1 | sed 's/.*"\(.*\)".*/\1/')
+          CURRENT=$(grep 'version = "' core/Cargo.toml | head -1 | sed 's/.*"\(.*\)".*/\1/')
           echo "Current: $CURRENT"
 
           MAJOR=$(echo $CURRENT | cut -d. -f1)
