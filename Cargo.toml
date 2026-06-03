@@ -2,9 +2,8 @@
 members = [
     "core",
     "types",
-    "cloud/rules/rule-engine",
 ]
-exclude = []
+exclude = ["cloud"]
 resolver = "2"
 
 [profile.release]

@@ -48,7 +48,7 @@ RUN cargo build --release --target x86_64-unknown-linux-musl -p tuora && \
 FROM gcr.io/distroless/static-debian12:nonroot
 
 # Copy static binary
-COPY --from=builder /app/target/x86_64-unknown-linux-musl/release/breakzero /breakzero
+COPY --from=builder /app/target/x86_64-unknown-linux-musl/release/tuora /tuora
 
 # Copy CA certificates for HTTPS
 COPY --from=builder /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/
