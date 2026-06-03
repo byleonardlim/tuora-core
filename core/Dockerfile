@@ -41,8 +41,8 @@ COPY core/assets ./core/assets
 RUN touch core/src/main.rs types/src/lib.rs
 
 # Build static binary with size optimizations
-RUN cargo build --release --target x86_64-unknown-linux-musl -p breakzero && \
-    strip --strip-all target/x86_64-unknown-linux-musl/release/breakzero
+RUN cargo build --release --target x86_64-unknown-linux-musl -p tuora && \
+    strip --strip-all target/x86_64-unknown-linux-musl/release/tuora
 
 # Stage 2: Runtime - Google Distroless Static
 FROM gcr.io/distroless/static-debian12:nonroot
