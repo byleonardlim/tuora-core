@@ -39,51 +39,58 @@ jobs:
         id: bump
         run: |
           CURRENT=$(grep 'version = "' core/Cargo.toml | head -1 | sed 's/.*"\(.*\)".*/\1/')
-          echo "Current: $CURRENT"
-
-          MAJOR=$(echo $CURRENT | cut -d. -f1)
-          MINOR=$(echo $CURRENT | cut -d. -f2)
-          PATCH=$(echo $CURRENT | cut -d. -f3)
+          echo "Current version: $CURRENT"
 
           BUMP="${{ github.event.inputs.bump }}"
-          # Auto patch bump on main push if no bump specified
-          if [ -z "$BUMP" ] || [ "$BUMP" = "none" ]; then
-            BUMP="patch"
+
+          if [ "$BUMP" = "none" ]; then
+            # No bump - tag current version as-is
+            NEW="$CURRENT"
+            echo "No bump requested, using current version"
+          else
+            # Calculate new version
+            MAJOR=$(echo $CURRENT | cut -d. -f1)
+            MINOR=$(echo $CURRENT | cut -d. -f2)
+            PATCH=$(echo $CURRENT | cut -d. -f3)
+
+            case "$BUMP" in
+              major)
+                MAJOR=$((MAJOR + 1))
+                MINOR=0
+                PATCH=0
+                ;;
+              minor)
+                MINOR=$((MINOR + 1))
+                PATCH=0
+                ;;
+              patch)
+                PATCH=$((PATCH + 1))
+                ;;
+            esac
+
+            NEW="$MAJOR.$MINOR.$PATCH"
+            echo "Bumped to: $NEW"
+
+            # Update Cargo.toml
+            sed -i "s/^version = \"$CURRENT\"/version = \"$NEW\"/" core/Cargo.toml
+
+            git config user.name "GitHub Actions"
+            git config user.email "actions@github.com"
+            git add core/Cargo.toml
+            git commit -m "chore: release v$NEW"
           fi
 
-          case "$BUMP" in
-            major)
-              MAJOR=$((MAJOR + 1))
-              MINOR=0
-              PATCH=0
-              ;;
-            minor)
-              MINOR=$((MINOR + 1))
-              PATCH=0
-              ;;
-            patch)
-              PATCH=$((PATCH + 1))
-              ;;
-          esac
-
-          NEW="$MAJOR.$MINOR.$PATCH"
-          echo "New: $NEW"
           echo "version=$NEW" >> $GITHUB_OUTPUT
           echo "tag=v$NEW" >> $GITHUB_OUTPUT
 
-          # Update Cargo.toml
-          sed -i "s/^version = \"$CURRENT\"/version = \"$NEW\"/" core/Cargo.toml
+          # Create and push tag
+          git tag "v$NEW" || echo "Tag v$NEW already exists"
+          git push origin "v$NEW" || echo "Tag already pushed"
 
-          git config user.name "GitHub Actions"
-          git config user.email "actions@github.com"
-          git add core/Cargo.toml
-          git commit -m "chore: release v$NEW"
-          git tag "v$NEW"
-
-      - name: Push changes
+      - name: Push version bump commit
+        if: github.event.inputs.bump != 'none'
         run: |
           git push origin main
-          git push origin "v${{ steps.bump.outputs.version }}"
 
   test:
     name: Quality Checks
