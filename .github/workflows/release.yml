@@ -16,6 +16,11 @@ on:
           - minor
           - major
           - none
+      build_only:
+        description: 'Skip bump, just build and release (for existing tag)'
+        required: false
+        default: false
+        type: boolean
 
 env:
   CARGO_TERM_COLOR: always
@@ -23,7 +28,7 @@ env:
 jobs:
   bump-version:
     name: Bump Version
-    if: github.event_name == 'workflow_dispatch'
+    if: github.event_name == 'workflow_dispatch' && github.event.inputs.build_only != 'true'
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -95,7 +100,7 @@ jobs:
 
   test:
     name: Quality Checks
-    if: github.event_name != 'workflow_dispatch'
+    if: github.event_name != 'workflow_dispatch' || github.event.inputs.build_only == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -107,7 +112,7 @@ jobs:
 
   build:
     name: Build ${{ matrix.target }}
-    if: github.event_name != 'workflow_dispatch'
+    if: github.event_name != 'workflow_dispatch' || github.event.inputs.build_only == 'true'
     needs: test
     runs-on: ${{ matrix.os }}
     strategy:
