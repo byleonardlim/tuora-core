@@ -18,15 +18,15 @@ detect_platform() {
     case "$OS" in
         linux)
             case "$ARCH" in
-                x86_64) PLATFORM="x86_64-unknown-linux-musl" ;;
-                aarch64|arm64) PLATFORM="aarch64-unknown-linux-musl" ;;
+                x86_64) PLATFORM="linux-x86_64" ;;
+                aarch64|arm64) PLATFORM="linux-arm64" ;;
                 *) echo "Unsupported architecture: $ARCH"; exit 1 ;;
             esac
             ;;
         darwin)
             case "$ARCH" in
-                x86_64) PLATFORM="x86_64-apple-darwin" ;;
-                arm64) PLATFORM="aarch64-apple-darwin" ;;
+                x86_64) PLATFORM="macos-x86_64" ;;
+                arm64) PLATFORM="macos-arm64" ;;
                 *) echo "Unsupported architecture: $ARCH"; exit 1 ;;
             esac
             ;;

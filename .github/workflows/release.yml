@@ -4,13 +4,31 @@ on:
   push:
     tags:
       - 'v[0-9]+.[0-9]+.[0-9]+*'
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version to release (e.g., v0.1.0-alpha.1)'
+        required: true
+        type: string
 
 env:
   CARGO_TERM_COLOR: always
 
 jobs:
+  test:
+    name: Quality Checks
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo test --workspace
+      - run: cargo clippy --workspace --all-targets --all-features -- -D warnings
+      - run: cargo fmt --all -- --check
+
   build:
     name: Build ${{ matrix.target }}
+    needs: test
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
@@ -20,32 +38,26 @@ jobs:
           - target: x86_64-unknown-linux-musl
             os: ubuntu-latest
             binary: tuora
-            asset_name: tuora-x86_64-unknown-linux-musl
+            asset_name: tuora-linux-x86_64
             
           # Linux ARM64
           - target: aarch64-unknown-linux-musl
             os: ubuntu-latest
             binary: tuora
-            asset_name: tuora-aarch64-unknown-linux-musl
+            asset_name: tuora-linux-arm64
             use_cross: true
             
           # macOS Intel
           - target: x86_64-apple-darwin
             os: macos-latest
             binary: tuora
-            asset_name: tuora-x86_64-apple-darwin
+            asset_name: tuora-macos-x86_64
             
           # macOS Apple Silicon
           - target: aarch64-apple-darwin
             os: macos-latest
             binary: tuora
-            asset_name: tuora-aarch64-apple-darwin
-            
-          # Windows x64
-          - target: x86_64-pc-windows-msvc
-            os: windows-latest
-            binary: tuora.exe
-            asset_name: tuora-x86_64-pc-windows-msvc.exe
+            asset_name: tuora-macos-arm64
 
     steps:
       - uses: actions/checkout@v4
@@ -77,21 +89,15 @@ jobs:
           TUORA_SIGNING_PUBKEY: ${{ secrets.TUORA_SIGNING_PUBKEY }}
         run: cross build --release --target ${{ matrix.target }} -p tuora
 
-      - name: Strip binary (Unix)
-        if: '!contains(matrix.os, ''windows'')'
+      - name: Strip binary
         run: |
           strip target/${{ matrix.target }}/release/${{ matrix.binary }}
           ls -lh target/${{ matrix.target }}/release/${{ matrix.binary }}
 
-      - name: Calculate checksums
-        shell: bash
+      - name: Calculate checksum
         run: |
           cd target/${{ matrix.target }}/release
-          if [[ "${{ matrix.os }}" == "windows-latest" ]]; then
-            certutil -hashfile ${{ matrix.binary }} SHA256 | findstr /v "hash" > ${{ matrix.asset_name }}.sha256
-          else
-            shasum -a 256 ${{ matrix.binary }} > ${{ matrix.asset_name }}.sha256
-          fi
+          shasum -a 256 ${{ matrix.binary }} > ${{ matrix.asset_name }}.sha256
           cat ${{ matrix.asset_name }}.sha256
 
       - name: Upload artifact
@@ -138,7 +144,7 @@ jobs:
             release/tuora-*
             release/SHA256SUMS
           draft: false
-          prerelease: ${{ contains(github.ref_name, '-rc') || contains(github.ref_name, '-beta') || contains(github.ref_name, '-alpha') }}
+          prerelease: ${{ startsWith(github.ref_name, 'v0.') || contains(github.ref_name, '-rc') || contains(github.ref_name, '-beta') || contains(github.ref_name, '-alpha') }}
           generate_release_notes: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
