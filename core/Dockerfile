@@ -60,4 +60,4 @@ USER 65532:65532
 WORKDIR /app
 
 # Entrypoint
-ENTRYPOINT ["/breakzero"]
+ENTRYPOINT ["/tuora"]

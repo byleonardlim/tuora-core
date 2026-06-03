@@ -20,6 +20,7 @@ fn main() {
     let rule_engine_toml = rule_engine_dir.join("Cargo.toml");
     if !rule_engine_toml.exists() {
         println!("cargo::warning=rule-engine crate not found at {}, skipping WASM build", rule_engine_dir.display());
+        println!("cargo::rustc-env=RULE_ENGINE_VERSION=0.0.0");
         return;
     }
 
