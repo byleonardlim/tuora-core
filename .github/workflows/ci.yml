@@ -1,0 +1,81 @@
+name: CI
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+    branches: [main, master]
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  test-core:
+    name: Test Core (Rust)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo test -p tuora
+      - run: cargo test -p tuora-types
+      - run: cargo clippy -p tuora -- -D warnings
+      - run: cargo fmt --check -p tuora
+
+  test-cloud-api:
+    name: Test Cloud API
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: cloud/breakzero-api
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v2
+        with:
+          version: 9
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'pnpm'
+          cache-dependency-path: cloud/breakzero-api/pnpm-lock.yaml
+      - run: pnpm install
+      - run: pnpm typecheck
+      - run: pnpm lint || true
+
+  test-dashboard:
+    name: Test Dashboard
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: cloud/dashboard
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v2
+        with:
+          version: 9
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'pnpm'
+          cache-dependency-path: cloud/dashboard/pnpm-lock.yaml
+      - run: pnpm install
+      - run: pnpm check
+      - run: pnpm build
+
+  build-release-binary:
+    name: Build Release Binary
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: x86_64-unknown-linux-musl
+      - uses: Swatinem/rust-cache@v2
+      - run: sudo apt-get update && sudo apt-get install -y musl-tools
+      - run: cargo build --release --target x86_64-unknown-linux-musl -p tuora
+      - run: strip target/x86_64-unknown-linux-musl/release/tuora
+      - run: ls -lh target/x86_64-unknown-linux-musl/release/tuora
+      - uses: actions/upload-artifact@v4
+        with:
+          name: tuora-release-binary
+          path: target/x86_64-unknown-linux-musl/release/tuora

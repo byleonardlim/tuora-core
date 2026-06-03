@@ -1,0 +1,34 @@
+# Documentation
+documentation/
+
+# Rust
+target/
+Cargo.lock
+**/*.rs.bk
+*.pdb
+
+# Dev WASM artifacts
+core/dev/def-*.wasm
+.dev-bundles/
+scripts/
+
+# Assets (sensitive — private key only, public key is committed)
+core/assets/signing_key
+core/assets/*.pem
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Cache
+.cache/
+
+# Cloud backend — proprietary, tracked in a separate private repo
+cloud/

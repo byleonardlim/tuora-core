@@ -1,0 +1,12 @@
+[package]
+name = "tuora-types"
+version = "0.1.0"
+edition = "2021"
+description = "Shared wire protocol types for Tuora CLI and cloud backend"
+
+[features]
+default = ["std"]
+std = ["serde/std"]
+
+[dependencies]
+serde = { version = "1", default-features = false, features = ["derive", "alloc"] }

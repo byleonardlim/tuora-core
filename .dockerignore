@@ -1,0 +1,36 @@
+# Git
+.git
+.gitignore
+
+# Build artifacts
+target/
+**/*.rs.bk
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Documentation (not needed for build)
+documentation/
+*.md
+
+# Cloud backend — never baked into the open-core image
+cloud/
+
+# Dev WASM artifacts (built inside container if needed)
+core/dev/mock-rules/target/
+core/dev/rules.wasm
+
+# Tests (not needed for release build)
+**/*_test.rs
+
+# Local config
+.env
+.env.local
+
+# CI/CD
+.github/
+.gitlab-ci.yml
+.travis.yml
