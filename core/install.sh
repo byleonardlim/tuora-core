@@ -105,7 +105,7 @@ main() {
             *":$INSTALL_DIR:"*)
                 echo "Get started:"
                 echo "  tuora init          # Configure your API key"
-                echo "  tuora --path .      # Scan current directory"
+                echo "  tuora watch         # Scan and watch current directory"
                 ;;
             *)
                 echo "⚠️  $INSTALL_DIR is not in your PATH"
@@ -115,7 +115,7 @@ main() {
                 echo ""
                 echo "Then run:"
                 echo "  tuora init          # Configure your API key"
-                echo "  tuora --path .      # Scan current directory"
+                echo "  tuora watch         # Scan and watch current directory"
                 ;;
         esac
     else

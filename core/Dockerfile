@@ -1,11 +1,11 @@
-# BreakZero: Distroless Static Container Build
-# STATUS: NOT READY - Package name mismatch and cross-compilation pipeline not complete
+# Tuora: Distroless Static Container Build
+# STATUS: NOT READY - cross-compilation pipeline not complete
 # For current distribution, use the native CLI installer: curl -fsSL https://get.runtuora.com/install.sh | sh
 #
 # Target: ~11-14MB uncompressed image
 #
-# Build context must be the workspace root (breakzero/), not core/:
-#   docker build -f core/Dockerfile -t breakzero .
+# Build context must be the workspace root, not core/:
+#   docker build -f core/Dockerfile -t tuora .
 
 # Stage 1: Build environment
 FROM rust:1.78-alpine AS builder

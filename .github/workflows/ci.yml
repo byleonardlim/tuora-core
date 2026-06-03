@@ -22,46 +22,6 @@ jobs:
       - run: cargo clippy -p tuora -- -D warnings
       - run: cargo fmt --check -p tuora
 
-  test-cloud-api:
-    name: Test Cloud API
-    runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: cloud/breakzero-api
-    steps:
-      - uses: actions/checkout@v4
-      - uses: pnpm/action-setup@v2
-        with:
-          version: 9
-      - uses: actions/setup-node@v4
-        with:
-          node-version: '22'
-          cache: 'pnpm'
-          cache-dependency-path: cloud/breakzero-api/pnpm-lock.yaml
-      - run: pnpm install
-      - run: pnpm typecheck
-      - run: pnpm lint || true
-
-  test-dashboard:
-    name: Test Dashboard
-    runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: cloud/dashboard
-    steps:
-      - uses: actions/checkout@v4
-      - uses: pnpm/action-setup@v2
-        with:
-          version: 9
-      - uses: actions/setup-node@v4
-        with:
-          node-version: '22'
-          cache: 'pnpm'
-          cache-dependency-path: cloud/dashboard/pnpm-lock.yaml
-      - run: pnpm install
-      - run: pnpm check
-      - run: pnpm build
-
   build-release-binary:
     name: Build Release Binary
     runs-on: ubuntu-latest

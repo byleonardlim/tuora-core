@@ -1,9 +1,9 @@
 [package]
 name = "tuora"
 version = "0.1.0"
-edition = "2021"
-description = "Zero-footprint security scanner for vibe-coded applications"
-license = "MIT"
+edition = "2026"
+description = "Code watcher and analyzer for vibe-coded applications"
+license = "Apache-2.0"
 
 [[bin]]
 name = "tuora"
@@ -49,7 +49,7 @@ keyring = { version = "3", features = ["apple-native"] }
 rpassword = "7"
 
 # Filesystem watching for watch mode
-notify = { version = "6", features = ["macos_kqueue"] }
+notify = { version = "6" }
 ignore = "0.4"
 
 [dev-dependencies]
