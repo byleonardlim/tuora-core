@@ -205,7 +205,7 @@ impl TelemetrySink {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::types::{Framework, OwaspCategory, RuleCategory, RuleId, Severity, Violation};
+    use crate::types::Framework;
     use std::path::PathBuf;
 
     fn create_test_result() -> ScanResult {

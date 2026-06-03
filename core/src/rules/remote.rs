@@ -204,9 +204,12 @@ fn get_platform_string() -> String {
 /// Get embedded Ed25519 public key for signature verification
 #[cfg(not(debug_assertions))]
 fn get_signing_public_key() -> Result<Vec<u8>> {
-    // This is the public key corresponding to the private key used to sign bundles
-    // In production, this would be embedded at build time
-    const PUBLIC_KEY_BASE64: &str = include_str!("../../assets/signing_key.pub");
+    const PUBLIC_KEY_BASE64: &str = env!("TUORA_SIGNING_PUBKEY_VALUE");
+    if PUBLIC_KEY_BASE64.is_empty() {
+        anyhow::bail!(
+            "Signing public key was not embedded at build time (TUORA_SIGNING_PUBKEY not set)"
+        );
+    }
     base64::engine::general_purpose::STANDARD
         .decode(PUBLIC_KEY_BASE64.trim())
         .map_err(|e| anyhow::anyhow!("Failed to decode public key: {}", e))

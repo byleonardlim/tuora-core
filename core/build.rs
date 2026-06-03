@@ -8,6 +8,8 @@ use std::path::PathBuf;
 use std::process::Command;
 
 fn main() {
+    inject_signing_key();
+
     let profile = std::env::var("PROFILE").unwrap_or_default();
     if profile != "debug" {
         return;
@@ -173,4 +175,45 @@ fn encode_leb128(mut value: usize) -> Vec<u8> {
         }
     }
     out
+}
+
+/// Resolve the Ed25519 public key and forward it as TUORA_SIGNING_PUBKEY_VALUE.
+///
+/// Resolution order:
+///   1. `TUORA_SIGNING_PUBKEY` environment variable (set by CI from a GitHub secret)
+///   2. `core/assets/signing_key.pub` on disk (local dev fallback only)
+///
+/// Release builds panic at compile time if neither source yields a non-empty value.
+fn inject_signing_key() {
+    println!("cargo::rerun-if-env-changed=TUORA_SIGNING_PUBKEY");
+    println!("cargo::rerun-if-changed=assets/signing_key.pub");
+
+    let profile = std::env::var("PROFILE").unwrap_or_default();
+
+    let key = std::env::var("TUORA_SIGNING_PUBKEY")
+        .ok()
+        .filter(|v| !v.trim().is_empty())
+        .or_else(|| {
+            let path = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("assets/signing_key.pub");
+            std::fs::read_to_string(path)
+                .ok()
+                .map(|s| s.trim().to_string())
+                .filter(|s| !s.is_empty())
+        });
+
+    match key {
+        Some(k) => {
+            println!("cargo::rustc-env=TUORA_SIGNING_PUBKEY_VALUE={}", k.trim());
+        }
+        None if profile == "release" => {
+            panic!(
+                "\n\nERROR: TUORA_SIGNING_PUBKEY is not set and assets/signing_key.pub does not \
+                 exist.\nRelease builds require the signing public key to be injected via the \
+                 TUORA_SIGNING_PUBKEY environment variable (set it as a GitHub Actions secret).\n"
+            );
+        }
+        None => {
+            println!("cargo::rustc-env=TUORA_SIGNING_PUBKEY_VALUE=");
+        }
+    }
 }

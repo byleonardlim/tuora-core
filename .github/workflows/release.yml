@@ -67,10 +67,14 @@ jobs:
 
       - name: Build (native)
         if: '!matrix.use_cross'
+        env:
+          TUORA_SIGNING_PUBKEY: ${{ secrets.TUORA_SIGNING_PUBKEY }}
         run: cargo build --release --target ${{ matrix.target }} -p tuora
 
       - name: Build (cross)
         if: matrix.use_cross
+        env:
+          TUORA_SIGNING_PUBKEY: ${{ secrets.TUORA_SIGNING_PUBKEY }}
         run: cross build --release --target ${{ matrix.target }} -p tuora
 
       - name: Strip binary (Unix)

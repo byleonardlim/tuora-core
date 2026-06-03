@@ -12,8 +12,9 @@ core/dev/def-*.wasm
 .dev-bundles/
 scripts/
 
-# Assets (sensitive — private key only, public key is committed)
+# Assets — all signing key material, injected via CI secret at build time
 core/assets/signing_key
+core/assets/signing_key.pub
 core/assets/*.pem
 
 # IDE
