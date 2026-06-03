@@ -5,7 +5,7 @@
 
 use super::wasm_engine::WasmRuleEngine;
 use crate::types::AuthResponse;
-use anyhow::{bail, Context, Result};
+use anyhow::{Context, Result, bail};
 use base64::Engine;
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
@@ -86,9 +86,9 @@ impl RuleBundleFetcher {
 
         debug!(path = %dev_path.display(), "Loading dev WASM");
 
-        let wasm_bytes = fs::read(&dev_path).await.with_context(|| {
-            format!("Failed to read dev WASM from {}", dev_path.display())
-        })?;
+        let wasm_bytes = fs::read(&dev_path)
+            .await
+            .with_context(|| format!("Failed to read dev WASM from {}", dev_path.display()))?;
 
         // In dev mode, skip signature verification.
         // block_in_place: wasmtime JIT (CLIF) is synchronous and CPU-heavy.
@@ -138,7 +138,11 @@ impl RuleBundleFetcher {
             .as_secs();
 
         if bundle.expires_at < now {
-            bail!("Rules bundle expired at {} (now: {})", bundle.expires_at, now);
+            bail!(
+                "Rules bundle expired at {} (now: {})",
+                bundle.expires_at,
+                now
+            );
         }
 
         // Decode WASM and signature
@@ -188,7 +192,6 @@ impl RuleBundleFetcher {
         debug!(path = %cache_path.display(), "Cached rules bundle");
         Ok(())
     }
-
 }
 
 /// Get platform string for API request
@@ -204,7 +207,8 @@ fn get_signing_public_key() -> Result<Vec<u8>> {
     // This is the public key corresponding to the private key used to sign bundles
     // In production, this would be embedded at build time
     const PUBLIC_KEY_BASE64: &str = include_str!("../../assets/signing_key.pub");
-    base64::engine::general_purpose::STANDARD.decode(PUBLIC_KEY_BASE64.trim())
+    base64::engine::general_purpose::STANDARD
+        .decode(PUBLIC_KEY_BASE64.trim())
         .map_err(|e| anyhow::anyhow!("Failed to decode public key: {}", e))
 }
 
@@ -212,8 +216,8 @@ fn get_signing_public_key() -> Result<Vec<u8>> {
 /// Output layout: [12-byte nonce][ciphertext + 16-byte GCM tag]
 #[cfg(not(debug_assertions))]
 fn encrypt_with_api_key(data: &[u8], api_key: &str) -> Result<Vec<u8>> {
-    use ring::aead::{self, BoundKey, SealingKey, UnboundKey, AES_256_GCM};
-    use ring::digest::{digest, SHA256};
+    use ring::aead::{self, AES_256_GCM, BoundKey, SealingKey, UnboundKey};
+    use ring::digest::{SHA256, digest};
     use ring::rand::{SecureRandom, SystemRandom};
 
     // Derive 32-byte AES key via SHA-256 of the API key
@@ -251,15 +255,16 @@ fn encrypt_with_api_key(data: &[u8], api_key: &str) -> Result<Vec<u8>> {
 /// Expects layout: [12-byte nonce][ciphertext + 16-byte GCM tag]
 #[cfg(not(debug_assertions))]
 fn decrypt_with_api_key(data: &[u8], api_key: &str) -> Result<Vec<u8>> {
-    use ring::aead::{self, BoundKey, OpeningKey, UnboundKey, AES_256_GCM};
-    use ring::digest::{digest, SHA256};
+    use ring::aead::{self, AES_256_GCM, BoundKey, OpeningKey, UnboundKey};
+    use ring::digest::{SHA256, digest};
 
     if data.len() < 12 {
         anyhow::bail!("Encrypted bundle too short to contain nonce");
     }
 
     let (nonce_bytes, ciphertext) = data.split_at(12);
-    let nonce_arr: [u8; 12] = nonce_bytes.try_into()
+    let nonce_arr: [u8; 12] = nonce_bytes
+        .try_into()
         .map_err(|_| anyhow::anyhow!("Invalid nonce length"))?;
 
     let key_material = digest(&SHA256, api_key.as_bytes());
@@ -277,7 +282,9 @@ fn decrypt_with_api_key(data: &[u8], api_key: &str) -> Result<Vec<u8>> {
     let mut buf = ciphertext.to_vec();
     let plaintext = opening_key
         .open_in_place(aead::Aad::empty(), &mut buf)
-        .map_err(|_| anyhow::anyhow!("AES-GCM decryption failed — bundle may be corrupt or key mismatch"))?;
+        .map_err(|_| {
+            anyhow::anyhow!("AES-GCM decryption failed — bundle may be corrupt or key mismatch")
+        })?;
 
     Ok(plaintext.to_vec())
 }

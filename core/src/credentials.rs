@@ -3,7 +3,7 @@
 //! Handles secure storage of API keys using OS-native keyring services.
 //! Falls back to environment variables in containerized environments.
 
-use anyhow::{bail, Context, Result};
+use anyhow::{Context, Result, bail};
 use std::io::{self, Write};
 use tracing::{debug, info};
 
@@ -27,11 +27,11 @@ pub fn is_running_in_docker() -> bool {
 /// 4. Error with helpful message
 pub fn get_api_key(cli_key: Option<String>) -> Result<String> {
     // 1. CLI argument (highest priority)
-    if let Some(key) = cli_key {
-        if !key.is_empty() {
-            debug!("Using API key from CLI argument");
-            return Ok(key);
-        }
+    if let Some(key) = cli_key
+        && !key.is_empty()
+    {
+        debug!("Using API key from CLI argument");
+        return Ok(key);
     }
 
     // 2 & 3. Environment variable then OS keyring — single call, one Keychain access
@@ -59,8 +59,10 @@ pub fn get_api_key(cli_key: Option<String>) -> Result<String> {
 /// Store API key in OS keyring
 pub fn store_api_key(api_key: &str) -> Result<()> {
     if is_running_in_docker() {
-        bail!("`tuora init` is not available in Docker containers.\n\
-               Use the TUORA_API_KEY environment variable instead.");
+        bail!(
+            "`tuora init` is not available in Docker containers.\n\
+               Use the TUORA_API_KEY environment variable instead."
+        );
     }
 
     let entry = keyring::Entry::new(KEYRING_SERVICE, KEYRING_ACCOUNT)
@@ -79,20 +81,18 @@ pub fn store_api_key(api_key: &str) -> Result<()> {
 /// Reads from the keyring at most once, so callers that need both "does it exist?"
 /// and "what is it?" can avoid the double macOS Keychain authorization prompt.
 pub fn get_existing_api_key() -> Option<String> {
-    if let Ok(key) = std::env::var("TUORA_API_KEY") {
-        if !key.is_empty() {
-            return Some(key);
-        }
+    if let Ok(key) = std::env::var("TUORA_API_KEY")
+        && !key.is_empty()
+    {
+        return Some(key);
     }
 
-    if !is_running_in_docker() {
-        if let Ok(entry) = keyring::Entry::new(KEYRING_SERVICE, KEYRING_ACCOUNT) {
-            if let Ok(key) = entry.get_password() {
-                if !key.is_empty() {
-                    return Some(key);
-                }
-            }
-        }
+    if !is_running_in_docker()
+        && let Ok(entry) = keyring::Entry::new(KEYRING_SERVICE, KEYRING_ACCOUNT)
+        && let Ok(key) = entry.get_password()
+        && !key.is_empty()
+    {
+        return Some(key);
     }
 
     None
@@ -119,16 +119,14 @@ fn read_password() -> Result<String> {
     #[cfg(unix)]
     {
         use std::os::unix::fs::MetadataExt;
-        
+
         // Check if stdin is a TTY
-        let metadata = std::fs::metadata("/dev/stdin")
-            .context("Failed to check stdin metadata")?;
+        let metadata = std::fs::metadata("/dev/stdin").context("Failed to check stdin metadata")?;
         let is_tty = metadata.mode() & 0o020000 != 0; // S_IFCHR check
 
         if is_tty {
             // Use rpassword for hidden input
-            rpassword::read_password()
-                .context("Failed to read password securely")
+            rpassword::read_password().context("Failed to read password securely")
         } else {
             // Not a TTY, read normally (for piped input)
             let mut input = String::new();

@@ -16,7 +16,7 @@ pub fn print_banner() {
     let height = lines.len();
 
     // Print shadow on fresh lines, clearing each line to avoid trailing overlap.
-    let _ = write!(stdout, "\n");
+    let _ = writeln!(stdout);
     for line in &lines {
         let _ = write!(stdout, "\r\x1b[2K\x1b[2m\x1b[36m {}\x1b[0m\n", line);
     }

@@ -8,7 +8,7 @@ use crate::auth::AuthClient;
 use crate::config::ScanConfig;
 use crate::progress::Progress;
 use crate::reporter::Reporter;
-use crate::rules::{remote::RuleBundleFetcher, RuleBackend};
+use crate::rules::{RuleBackend, remote::RuleBundleFetcher};
 use crate::scanner::IngestedFile;
 use crate::telemetry::TelemetrySink;
 use crate::types::{Framework, ScanResult, Violation};
@@ -61,11 +61,19 @@ struct WatchState {
 
 impl WatchState {
     fn all_violations(&self) -> Vec<Violation> {
-        self.violations_by_file.values().flatten().cloned().collect()
+        self.violations_by_file
+            .values()
+            .flatten()
+            .cloned()
+            .collect()
     }
 
     fn health_score(&self) -> u32 {
-        let deduction: u32 = self.all_violations().iter().map(|v| v.severity.weight()).sum();
+        let deduction: u32 = self
+            .all_violations()
+            .iter()
+            .map(|v| v.severity.weight())
+            .sum();
         100u32.saturating_sub(deduction)
     }
 }
@@ -74,7 +82,9 @@ impl WatchState {
 pub async fn run(cfg: ScanConfig) -> Result<()> {
     // ── Pre-flight: Validate path before any network call ─────────────────
 
-    let watch_path = cfg.path.canonicalize()
+    let watch_path = cfg
+        .path
+        .canonicalize()
         .with_context(|| format!("Path not found: {}", cfg.path.display()))?;
 
     if !watch_path.is_dir() {
@@ -85,14 +95,14 @@ pub async fn run(cfg: ScanConfig) -> Result<()> {
     }
 
     // Quick pre-scan to check for scannable files before spending a wallet unit
-    let probe = crate::scanner::Scanner::new(&watch_path).scan()
+    let probe = crate::scanner::Scanner::new(&watch_path)
+        .scan()
         .with_context(|| format!("Cannot read directory: {}", watch_path.display()))?;
 
     if probe.files.is_empty() {
         eprintln!(
-            "\n{}✗{} No scannable files found in {}{}{}\n",
-            "\x1b[31m", "\x1b[0m",
-            "\x1b[1m", watch_path.display(), "\x1b[0m"
+            "\n\x1b[31m✗\x1b[0m No scannable files found in \x1b[1m{}\x1b[0m\n",
+            watch_path.display()
         );
         eprintln!("  Tuora supports: .py  .ts  .js  .tsx  .yaml  .yml  .json  .rs  .env*");
         eprintln!("  Is this a code project directory?\n");
@@ -102,49 +112,63 @@ pub async fn run(cfg: ScanConfig) -> Result<()> {
     // Warn but continue when no known framework is detected
     if probe.detected_framework == crate::types::Framework::Unknown {
         eprintln!(
-            "  {}⚠ No agentic framework detected — running in traditional SAST mode.{}\n",
-            "\x1b[33m", "\x1b[0m"
+            "  \x1b[33m⚠ No agentic framework detected — running in traditional SAST mode.\x1b[0m\n"
         );
     }
 
     // ── Phase 1: Bootstrap ────────────────────────────────────────────────
 
     // Stage 1: Auth
-    let (mut auth_client, auth_response) = Progress::run("authenticating", || async {
-        let mut client = AuthClient::new(&cfg.ledger_url)
-            .context("Failed to initialize auth client")?;
-        match client.verify(&cfg.api_key).await {
-            Ok(resp) => {
-                let clone = resp.clone();
-                Ok::<_, anyhow::Error>(Some((client, clone)))
+    let (mut auth_client, auth_response) = Progress::run(
+        "authenticating",
+        || async {
+            let mut client =
+                AuthClient::new(&cfg.ledger_url).context("Failed to initialize auth client")?;
+            match client.verify(&cfg.api_key).await {
+                Ok(resp) => {
+                    let clone = resp.clone();
+                    Ok::<_, anyhow::Error>(Some((client, clone)))
+                }
+                Err(e) => {
+                    eprintln!("\n\x1b[31mAuthentication failed:\x1b[0m {}", e);
+                    std::process::exit(1);
+                }
             }
-            Err(e) => {
-                eprintln!("\n{}Authentication failed:{} {}", "\x1b[31m", "\x1b[0m", e);
-                std::process::exit(1);
-            }
-        }
-    }, |_| None)
+        },
+        |_| None,
+    )
     .await?
     .map(|(c, r)| (Some(c), Some(r)))
     .unwrap_or((None, None));
 
     // Stage 2: Fetch rule bundle
-    let mut rule_backend: RuleBackend = Progress::run("loading rules", || async {
-        let fetcher = RuleBundleFetcher::new(&cfg.ledger_url, &cfg.api_key);
-        match fetcher.fetch(auth_response.as_ref().unwrap()).await {
-            Ok(engine) => Ok::<_, anyhow::Error>(engine),
-            Err(e) => {
-                eprintln!("\n{}Rule fetch failed:{}{}",
-                    "\x1b[33m", "\x1b[0m", e);
-                Err(e)
+    let mut rule_backend: RuleBackend = Progress::run(
+        "loading rules",
+        || async {
+            let fetcher = RuleBundleFetcher::new(&cfg.ledger_url, &cfg.api_key);
+            match fetcher.fetch(auth_response.as_ref().unwrap()).await {
+                Ok(engine) => Ok::<_, anyhow::Error>(engine),
+                Err(e) => {
+                    eprintln!("\n\x1b[33mRule fetch failed:\x1b[0m{}", e);
+                    Err(e)
+                }
             }
-        }
-    }, |res| res.as_ref().ok().map(|b| format!("({} rules)", b.rule_count())))
+        },
+        |res| {
+            res.as_ref()
+                .ok()
+                .map(|b| format!("({} rules)", b.rule_count()))
+        },
+    )
     .await?;
 
     // Stage 3: Use probe result directly — directory already validated and scanned
     let framework_info = if probe.detected_framework != Framework::Unknown {
-        format!("({} detected, {} files)", probe.detected_framework.name(), probe.files.len())
+        format!(
+            "({} detected, {} files)",
+            probe.detected_framework.name(),
+            probe.files.len()
+        )
     } else {
         format!("({} files, traditional SAST mode)", probe.files.len())
     };
@@ -155,9 +179,8 @@ pub async fn run(cfg: ScanConfig) -> Result<()> {
     let rule_count = rule_backend.rule_count();
 
     // Stage 4: Baseline evaluation
-    let baseline_violations = tokio::task::block_in_place(|| {
-        rule_backend.evaluate(&workspace.files, framework)
-    });
+    let baseline_violations =
+        tokio::task::block_in_place(|| rule_backend.evaluate(&workspace.files, framework));
 
     // Build initial watch state
     let files_map: HashMap<PathBuf, IngestedFile> = workspace
@@ -187,10 +210,7 @@ pub async fn run(cfg: ScanConfig) -> Result<()> {
 
     // ── Phase 2: Watch Loop ───────────────────────────────────────────────
 
-    println!(
-        "{}  Watching for changes…{} (Ctrl+C to exit)\n",
-        "\x1b[90m", "\x1b[0m"
-    );
+    println!("\x1b[90m  Watching for changes…\x1b[0m (Ctrl+C to exit)\n");
 
     // Build gitignore matcher from .gitignore if it exists
     let gitignore = build_gitignore(&cfg.path);
@@ -205,10 +225,8 @@ pub async fn run(cfg: ScanConfig) -> Result<()> {
     // FSEvents (RecommendedWatcher on macOS) is always recursive
     // Kqueue doesn't support watching directory contents with NonRecursive mode
     let mut watcher: PollWatcher = {
-        let config = notify::Config::default()
-            .with_poll_interval(Duration::from_millis(500));
-        PollWatcher::new(tx, config)
-            .context("Failed to create poll file watcher")?
+        let config = notify::Config::default().with_poll_interval(Duration::from_millis(500));
+        PollWatcher::new(tx, config).context("Failed to create poll file watcher")?
     };
 
     // Add non-recursive watches for each allowed directory
@@ -229,13 +247,23 @@ pub async fn run(cfg: ScanConfig) -> Result<()> {
         loop {
             match rx.try_recv() {
                 Ok(Ok(event)) => {
-                    debug!("Received event: {:?} for paths: {:?}", event.kind, event.paths);
+                    debug!(
+                        "Received event: {:?} for paths: {:?}",
+                        event.kind, event.paths
+                    );
                     if is_relevant_event(&event, &gitignore) {
                         for path in event.paths {
                             // If this is a new directory, add it to our watch list
-                            if event.kind.is_create() && path.is_dir() && !is_path_ignored(&path, &gitignore) {
+                            if event.kind.is_create()
+                                && path.is_dir()
+                                && !is_path_ignored(&path, &gitignore)
+                            {
                                 if let Err(e) = watcher.watch(&path, RecursiveMode::NonRecursive) {
-                                    warn!("Failed to watch new directory {}: {}", path.display(), e);
+                                    warn!(
+                                        "Failed to watch new directory {}: {}",
+                                        path.display(),
+                                        e
+                                    );
                                 } else {
                                     debug!("Added watch for new directory: {}", path.display());
                                 }
@@ -249,7 +277,7 @@ pub async fn run(cfg: ScanConfig) -> Result<()> {
                     }
                 }
                 Ok(Err(e)) => {
-                    eprintln!("{}Watch error:{} {}", "\x1b[31m", "\x1b[0m", e);
+                    eprintln!("\x1b[31mWatch error:\x1b[0m {}", e);
                 }
                 Err(mpsc::TryRecvError::Empty) => break,
                 Err(mpsc::TryRecvError::Disconnected) => {
@@ -262,7 +290,7 @@ pub async fn run(cfg: ScanConfig) -> Result<()> {
 
         // Fire evaluation when debounce window has elapsed and there are events
         if !pending.is_empty() && last_event.elapsed() >= Duration::from_millis(DEBOUNCE_MS) {
-            let changed: Vec<PathBuf> = pending.drain(..).collect();
+            let changed: Vec<PathBuf> = std::mem::take(&mut pending);
             let changed = dedup_paths(changed);
 
             let eval_start = Instant::now();
@@ -401,10 +429,18 @@ fn build_gitignore(root: &Path) -> Option<ignore::gitignore::Gitignore> {
 
 /// Discover all directories that should be watched, excluding ignored/large ones.
 /// Returns a list of directories to watch with NonRecursive mode.
-fn discover_watch_dirs(root: &Path, gitignore: &Option<ignore::gitignore::Gitignore>) -> Vec<PathBuf> {
+fn discover_watch_dirs(
+    root: &Path,
+    gitignore: &Option<ignore::gitignore::Gitignore>,
+) -> Vec<PathBuf> {
     let mut dirs = Vec::new();
 
-    fn scan_dir(dir: &Path, dirs: &mut Vec<PathBuf>, gitignore: &Option<ignore::gitignore::Gitignore>, depth: usize) {
+    fn scan_dir(
+        dir: &Path,
+        dirs: &mut Vec<PathBuf>,
+        gitignore: &Option<ignore::gitignore::Gitignore>,
+        depth: usize,
+    ) {
         if depth > 20 {
             // Limit recursion depth to prevent stack overflow
             return;
@@ -469,7 +505,9 @@ fn re_ingest_file(path: &Path) -> Option<IngestedFile> {
             .map(|n| n.to_string_lossy().starts_with(".env"))
             .unwrap_or(false);
 
-    let allowed = ["py", "ts", "js", "tsx", "yaml", "yml", "json", "mjs", "cjs", "svelte", "rs"];
+    let allowed = [
+        "py", "ts", "js", "tsx", "yaml", "yml", "json", "mjs", "cjs", "svelte", "rs",
+    ];
     if !allowed.contains(&extension.as_str()) && !is_env {
         return None;
     }
@@ -523,15 +561,27 @@ fn compute_delta(
 
         // Newly appeared violations (in new, not in old)
         for v in new_v {
-            if !old_v.iter().any(|o| o.rule_id == v.rule_id && o.line_number == v.line_number) {
-                delta.push(ViolationDelta { violation: v.clone(), is_new: true });
+            if !old_v
+                .iter()
+                .any(|o| o.rule_id == v.rule_id && o.line_number == v.line_number)
+            {
+                delta.push(ViolationDelta {
+                    violation: v.clone(),
+                    is_new: true,
+                });
             }
         }
 
         // Resolved violations (in old, not in new)
         for v in old_v {
-            if !new_v.iter().any(|n| n.rule_id == v.rule_id && n.line_number == v.line_number) {
-                delta.push(ViolationDelta { violation: v.clone(), is_new: false });
+            if !new_v
+                .iter()
+                .any(|n| n.rule_id == v.rule_id && n.line_number == v.line_number)
+            {
+                delta.push(ViolationDelta {
+                    violation: v.clone(),
+                    is_new: false,
+                });
             }
         }
     }
@@ -591,12 +641,7 @@ async fn flush_telemetry(cfg: &ScanConfig, state: &WatchState) {
     cfg.api_key.hash(&mut hasher);
     let workspace_id = format!("{:x}", hasher.finish())[..16].to_string();
 
-    let dummy_result = build_scan_result(
-        &cfg.path,
-        state,
-        Uuid::new_v4().to_string(),
-        0,
-    );
+    let dummy_result = build_scan_result(&cfg.path, state, Uuid::new_v4().to_string(), 0);
 
     let sink = TelemetrySink::new(&cfg.ledger_url, workspace_id.clone(), &cfg.api_key);
     let _ = sink.record_scan(&dummy_result, &workspace_id).await;

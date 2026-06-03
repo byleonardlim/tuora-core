@@ -8,7 +8,9 @@ use std::path::{Path, PathBuf};
 use tracing::{debug, warn};
 
 /// Supported file extensions for analysis
-const SCAN_EXTENSIONS: &[&str] = &["py", "ts", "js", "tsx", "yaml", "yml", "json", "svelte", "rs"];
+const SCAN_EXTENSIONS: &[&str] = &[
+    "py", "ts", "js", "tsx", "yaml", "yml", "json", "svelte", "rs",
+];
 
 /// Framework detection patterns — matched as substrings against lowercased file content
 const FRAMEWORK_PATTERNS: &[(&str, Framework)] = &[
@@ -54,9 +56,11 @@ pub struct IngestedFile {
 /// Workspace ingestion result
 #[derive(Debug, Clone)]
 pub struct WorkspaceSnapshot {
+    #[allow(dead_code)]
     pub root: PathBuf,
     pub files: Vec<IngestedFile>,
     pub detected_framework: Framework,
+    #[allow(dead_code)]
     pub manifest_files: Vec<PathBuf>,
 }
 
@@ -116,7 +120,11 @@ impl Scanner {
                 // Skip common non-source directories
                 if let Some(name) = path.file_name() {
                     let name = name.to_string_lossy();
-                    if name.starts_with('.') || name == "node_modules" || name == "__pycache__" || name == "target" {
+                    if name.starts_with('.')
+                        || name == "node_modules"
+                        || name == "__pycache__"
+                        || name == "target"
+                    {
                         debug!("Skipping directory: {}", path.display());
                         continue;
                     }
@@ -178,7 +186,11 @@ impl Scanner {
         // Check file size
         let metadata = fs::metadata(path)?;
         if metadata.len() > self.max_file_size as u64 {
-            warn!("Skipping large file: {} ({} bytes)", path.display(), metadata.len());
+            warn!(
+                "Skipping large file: {} ({} bytes)",
+                path.display(),
+                metadata.len()
+            );
             return Ok(());
         }
 
@@ -216,7 +228,12 @@ impl Scanner {
 
         // Check package.json dependency keys for JS/TS frameworks
         for file in files {
-            if file.path.file_name().map(|n| n.to_string_lossy() == "package.json").unwrap_or(false) {
+            if file
+                .path
+                .file_name()
+                .map(|n| n.to_string_lossy() == "package.json")
+                .unwrap_or(false)
+            {
                 for (key, framework) in PACKAGE_JSON_PATTERNS {
                     if file.content.contains(key) {
                         debug!(file = %file.path.display(), "Detected framework via package.json: {}", framework.name());

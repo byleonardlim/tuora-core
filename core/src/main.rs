@@ -23,7 +23,7 @@ mod types;
 use crate::{
     banner::print_banner,
     commands::{init, watch},
-    config::{ledger_url, Cli, Commands, ScanConfig},
+    config::{Cli, Commands, ScanConfig, ledger_url},
     credentials::get_api_key,
 };
 use clap::Parser;
@@ -48,7 +48,7 @@ async fn main() {
     match &cli.command {
         Some(Commands::Init) => {
             if let Err(e) = init::run(ledger_url()).await {
-                eprintln!("\n{}Error:{} {}", "\x1b[31m", "\x1b[0m", e);
+                eprintln!("\n\x1b[31mError:\x1b[0m {}", e);
                 std::process::exit(1);
             }
         }
@@ -57,14 +57,14 @@ async fn main() {
             let api_key = match get_api_key(Some(scan_cfg.api_key.clone())) {
                 Ok(key) => key,
                 Err(e) => {
-                    eprintln!("\n{}\x2717{} {}", "\x1b[31m", "\x1b[0m", e);
+                    eprintln!("\n\x1b[31m\x2717\x1b[0m {}", e);
                     std::process::exit(1);
                 }
             };
             let mut cfg = scan_cfg;
             cfg.api_key = api_key;
             if let Err(e) = watch::run(cfg).await {
-                eprintln!("\n{}Error:{} {}", "\x1b[31m", "\x1b[0m", e);
+                eprintln!("\n\x1b[31mError:\x1b[0m {}", e);
                 std::process::exit(1);
             }
         }
@@ -77,10 +77,15 @@ async fn main() {
 /// Initialize tracing subscriber
 fn init_logging() -> anyhow::Result<()> {
     use std::io;
-    use tracing_subscriber::{fmt, prelude::*, EnvFilter};
+    use tracing_subscriber::{EnvFilter, fmt, prelude::*};
 
     tracing_subscriber::registry()
-        .with(fmt::layer().without_time().with_target(false).with_writer(io::stderr))
+        .with(
+            fmt::layer()
+                .without_time()
+                .with_target(false)
+                .with_writer(io::stderr),
+        )
         .with(EnvFilter::from_default_env().add_directive("tuora=info".parse()?))
         .init();
 
@@ -89,36 +94,18 @@ fn init_logging() -> anyhow::Result<()> {
 
 /// Display the Tuora command list when no subcommand is provided
 fn print_help() {
-    println!(
-        "\n  {}Usage:{} tuora <command>\n",
-        "\x1b[1m", "\x1b[0m"
-    );
-    println!("  {}Commands:{}", "\x1b[1m", "\x1b[0m");
-    println!(
-        "    {}tuora init{}            Set up your API key for first use",
-        "\x1b[36m", "\x1b[0m"
-    );
-    println!(
-        "    {}tuora watch{}           Scan and watch the current directory",
-        "\x1b[36m", "\x1b[0m"
-    );
-    println!(
-        "    {}tuora watch <path>{}    Scan and watch a specific directory path",
-        "\x1b[36m", "\x1b[0m"
-    );
+    println!("\n  \x1b[1mUsage:\x1b[0m tuora <command>\n");
+    println!("  \x1b[1mCommands:\x1b[0m");
+    println!("    \x1b[36mtuora init\x1b[0m            Set up your API key for first use");
+    println!("    \x1b[36mtuora watch\x1b[0m           Scan and watch the current directory");
+    println!("    \x1b[36mtuora watch <path>\x1b[0m    Scan and watch a specific directory path");
     println!();
+    println!("  \x1b[1mOptions:\x1b[0m");
+    println!("    \x1b[90m-a, --api-key <KEY>\x1b[0m    Tuora API key (or set TUORA_API_KEY)");
     println!(
-        "  {}Options:{}",
-        "\x1b[1m", "\x1b[0m"
+        "    \x1b[90m-f, --format <FMT>\x1b[0m     Output format: ansi (default), json, plain"
     );
-    println!("    {}-a, --api-key <KEY>{}    Tuora API key (or set TUORA_API_KEY)", "\x1b[90m", "\x1b[0m");
-    println!("    {}-f, --format <FMT>{}     Output format: ansi (default), json, plain", "\x1b[90m", "\x1b[0m");
-    println!("    {}-V, --version{}          Print version", "\x1b[90m", "\x1b[0m");
+    println!("    \x1b[90m-V, --version\x1b[0m          Print version");
     println!();
-    println!(
-        "  {}Docs:{} https://runtuora.com/docs\n",
-        "\x1b[1m", "\x1b[0m"
-    );
+    println!("  \x1b[1mDocs:\x1b[0m https://runtuora.com/docs\n");
 }
-
-

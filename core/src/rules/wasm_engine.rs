@@ -14,7 +14,7 @@ use wasmtime::{Config, Engine, Instance, Memory, Module, Store, TypedFunc};
 /// WASM-based rule engine
 pub struct WasmRuleEngine {
     _engine: Engine,
-    instance: Instance,
+    _instance: Instance,
     store: Store<()>,
     memory: Memory,
     /// (input_ptr, input_len) -> (output_ptr)
@@ -49,7 +49,8 @@ impl WasmRuleEngine {
         let mut store = Store::new(&engine, ());
 
         // Create instance with no imports (pure compute sandbox)
-        let instance = Instance::new(&mut store, &module, &[]).map_err(|e| anyhow::anyhow!("{}", e))?;
+        let instance =
+            Instance::new(&mut store, &module, &[]).map_err(|e| anyhow::anyhow!("{}", e))?;
 
         // Get memory export
         let memory = instance
@@ -79,7 +80,7 @@ impl WasmRuleEngine {
 
         Ok(Self {
             _engine: engine,
-            instance,
+            _instance: instance,
             store,
             memory,
             evaluate_fn,
@@ -91,7 +92,11 @@ impl WasmRuleEngine {
 
     /// Evaluate files against WASM rules
     pub fn evaluate(&mut self, files: &[IngestedFile], framework: Framework) -> Vec<Violation> {
-        trace!(file_count = files.len(), framework = framework.name(), "Evaluating with WASM");
+        trace!(
+            file_count = files.len(),
+            framework = framework.name(),
+            "Evaluating with WASM"
+        );
 
         // Prepare input
         let input = EvalInput {
@@ -121,13 +126,19 @@ impl WasmRuleEngine {
         };
 
         // Write input to WASM memory
-        if let Err(e) = self.memory.write(&mut self.store, input_ptr as usize, &input_bytes) {
+        if let Err(e) = self
+            .memory
+            .write(&mut self.store, input_ptr as usize, &input_bytes)
+        {
             warn!(error = %e, "Failed to write to WASM memory");
             return vec![];
         }
 
         // Call evaluate
-        let output_ptr = match self.evaluate_fn.call(&mut self.store, (input_ptr, input_len)) {
+        let output_ptr = match self
+            .evaluate_fn
+            .call(&mut self.store, (input_ptr, input_len))
+        {
             Ok(p) => p,
             Err(e) => {
                 warn!(error = %e, "WASM evaluation failed");
@@ -139,7 +150,10 @@ impl WasmRuleEngine {
 
         // Read output length (first 4 bytes as u32 little endian)
         let mut len_bytes = [0u8; 4];
-        if let Err(e) = self.memory.read(&self.store, output_ptr as usize, &mut len_bytes) {
+        if let Err(e) = self
+            .memory
+            .read(&self.store, output_ptr as usize, &mut len_bytes)
+        {
             warn!(error = %e, "Failed to read output length");
             return vec![];
         }
@@ -149,7 +163,10 @@ impl WasmRuleEngine {
 
         // Read output data
         let mut output_bytes = vec![0u8; output_len];
-        if let Err(e) = self.memory.read(&self.store, output_ptr as usize + 4, &mut output_bytes) {
+        if let Err(e) = self
+            .memory
+            .read(&self.store, output_ptr as usize + 4, &mut output_bytes)
+        {
             warn!(error = %e, "Failed to read output data");
             return vec![];
         }
@@ -163,7 +180,10 @@ impl WasmRuleEngine {
             }
         };
 
-        debug!(violation_count = output.violations.len(), "WASM evaluation complete");
+        debug!(
+            violation_count = output.violations.len(),
+            "WASM evaluation complete"
+        );
 
         // Convert WASM violations to native Violations
         output
@@ -184,7 +204,11 @@ impl WasmRuleEngine {
     }
 
     /// Convert WASM violation to native Violation
-    fn convert_violation(&self, v: tuora_types::WasmViolation, _files: &[IngestedFile]) -> Violation {
+    fn convert_violation(
+        &self,
+        v: tuora_types::WasmViolation,
+        _files: &[IngestedFile],
+    ) -> Violation {
         use crate::types::{OwaspCategory, RuleCategory, RuleId};
         use std::path::PathBuf;
 
@@ -322,6 +346,9 @@ mod tests {
         };
         let violations = engine.evaluate(&[test_file], Framework::OpenAI);
         // Should detect BZ-HYG-01 (hardcoded secret) and BZ-HYG-03 (non-env api_key)
-        assert!(!violations.is_empty(), "WASM evaluate() returned no violations for known-bad input");
+        assert!(
+            !violations.is_empty(),
+            "WASM evaluate() returned no violations for known-bad input"
+        );
     }
 }

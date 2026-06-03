@@ -27,10 +27,8 @@ impl Progress {
         // Print initial state
         let _ = write!(
             stdout,
-            "\r\x1b[2K  {}\x1b[90m{}\x1b[0m {}...",
-            spinner_chars[0],
-            "tuora",
-            message
+            "\r\x1b[2K  {}\x1b[90mtuora\x1b[0m {}...",
+            spinner_chars[0], message
         );
         let _ = stdout.flush();
 
@@ -48,8 +46,7 @@ impl Progress {
                     // Clear the spinner line and print success
                     let _ = write!(
                         stdout,
-                        "\r\x1b[2K  \x1b[90m{}\x1b[0m {}... \x1b[32m✓\x1b[0m{}{}\n",
-                        "tuora",
+                        "\r\x1b[2K  \x1b[90mtuora\x1b[0m {}... \x1b[32m✓\x1b[0m{}{}\n",
                         message,
                         if detail.is_empty() { "" } else { " " },
                         detail,
@@ -61,9 +58,8 @@ impl Progress {
                     i = (i + 1) % spinner_chars.len();
                     let _ = write!(
                         stdout,
-                        "\r\x1b[2K  {}\x1b[90m{}\x1b[0m {}...",
+                        "\r\x1b[2K  {}\x1b[90mtuora\x1b[0m {}...",
                         spinner_chars[i],
-                        "tuora",
                         message
                     );
                     let _ = stdout.flush();

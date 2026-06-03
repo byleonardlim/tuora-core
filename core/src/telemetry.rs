@@ -1,9 +1,9 @@
 //! Async telemetry sinking (Stage 5)
 
-use crate::types::{ScanResult, TelemetryEvent, MetaStats, ViolationSummary};
+use crate::types::{MetaStats, ScanResult, TelemetryEvent, ViolationSummary};
 use anyhow::Result;
-use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicU64, Ordering};
 use tokio::sync::mpsc;
 use tracing::{debug, error, info, warn};
 
@@ -11,20 +11,27 @@ use tracing::{debug, error, info, warn};
 #[derive(Debug, Clone)]
 struct TelemetryEntry {
     event: TelemetryEvent,
+    #[allow(dead_code)]
     retries: u32,
 }
 
 /// Async telemetry sink with atomic ring buffer
 pub struct TelemetrySink {
     sender: mpsc::Sender<TelemetryEntry>,
+    #[allow(dead_code)]
     ledger_url: String,
     scan_count: Arc<AtomicU64>,
+    #[allow(dead_code)]
     api_key: String,
 }
 
 impl TelemetrySink {
     /// Create new telemetry sink and spawn background task
-    pub fn new(ledger_url: impl Into<String>, workspace_id: impl Into<String>, api_key: impl Into<String>) -> Self {
+    pub fn new(
+        ledger_url: impl Into<String>,
+        workspace_id: impl Into<String>,
+        api_key: impl Into<String>,
+    ) -> Self {
         let (sender, receiver) = mpsc::channel(100);
         let ledger_url = ledger_url.into();
         let workspace_id = workspace_id.into();
@@ -58,16 +65,20 @@ impl TelemetrySink {
                 code_base_files: result.files_scanned,
                 scan_duration_ms: result.scan_duration_ms,
             },
-            detected_vulnerabilities: result.violations.iter().map(|v| ViolationSummary {
-                rule_id: v.rule_id.0.clone(),
-                severity: format!("{:?}", v.severity),
-                tool_target: v.tool_target.clone(),
-                message: v.message.clone(),
-            }).collect(),
+            detected_vulnerabilities: result
+                .violations
+                .iter()
+                .map(|v| ViolationSummary {
+                    rule_id: v.rule_id.0.clone(),
+                    severity: format!("{:?}", v.severity),
+                    tool_target: v.tool_target.clone(),
+                    message: v.message.clone(),
+                })
+                .collect(),
         };
 
         let entry = TelemetryEntry { event, retries: 0 };
-        
+
         // Non-blocking send - drops if buffer full
         match self.sender.try_send(entry) {
             Ok(_) => {
@@ -75,7 +86,10 @@ impl TelemetrySink {
                 debug!("Telemetry queued for scan {}", result.scan_id);
             }
             Err(_) => {
-                warn!("Telemetry buffer full, dropping event for scan {}", result.scan_id);
+                warn!(
+                    "Telemetry buffer full, dropping event for scan {}",
+                    result.scan_id
+                );
             }
         }
 
@@ -104,7 +118,6 @@ impl TelemetrySink {
         };
 
         let batch_url = format!("{}/telemetry/batch", ledger_url);
-        let api_key = api_key;
         let mut batch = Vec::with_capacity(100);
         let mut last_flush = tokio::time::Instant::now();
         let flush_interval = std::time::Duration::from_secs(60);
@@ -115,12 +128,12 @@ impl TelemetrySink {
                 .checked_sub(last_flush.elapsed())
                 .unwrap_or_else(|| std::time::Duration::from_secs(0));
             let timeout = tokio::time::sleep(sleep_for);
-            
+
             tokio::select! {
                 // Receive new entry
                 Some(entry) = receiver.recv() => {
                     batch.push(entry);
-                    
+
                     // Flush if batch is full
                     if batch.len() >= max_batch_size {
                         Self::flush_batch(&client, &batch_url, &api_key, &batch).await;
@@ -128,7 +141,7 @@ impl TelemetrySink {
                         last_flush = tokio::time::Instant::now();
                     }
                 }
-                
+
                 // Periodic flush
                 _ = timeout => {
                     if !batch.is_empty() {
@@ -137,7 +150,7 @@ impl TelemetrySink {
                     }
                     last_flush = tokio::time::Instant::now();
                 }
-                
+
                 // Channel closed
                 else => {
                     // Flush remaining
@@ -152,7 +165,12 @@ impl TelemetrySink {
     }
 
     /// Flush a batch of telemetry events
-    async fn flush_batch(client: &reqwest::Client, url: &str, api_key: &str, batch: &[TelemetryEntry]) {
+    async fn flush_batch(
+        client: &reqwest::Client,
+        url: &str,
+        api_key: &str,
+        batch: &[TelemetryEntry],
+    ) {
         if batch.is_empty() {
             return;
         }
@@ -160,8 +178,9 @@ impl TelemetrySink {
         debug!("Flushing {} telemetry events to {}", batch.len(), url);
 
         let events: Vec<_> = batch.iter().map(|e| &e.event).collect();
-        
-        match client.post(url)
+
+        match client
+            .post(url)
             .bearer_auth(api_key)
             .json(&events)
             .send()
@@ -186,7 +205,7 @@ impl TelemetrySink {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::types::{Framework, RuleCategory, RuleId, Severity, OwaspCategory, Violation};
+    use crate::types::{Framework, OwaspCategory, RuleCategory, RuleId, Severity, Violation};
     use std::path::PathBuf;
 
     fn create_test_result() -> ScanResult {

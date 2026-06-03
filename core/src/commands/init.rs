@@ -12,19 +12,22 @@ use tracing::{debug, info};
 
 /// Run the init command
 pub async fn run(ledger_url: String) -> Result<()> {
-    println!("\n{}Tuora First-Time Setup{}", "\x1b[1m\x1b[36m", "\x1b[0m");
+    println!("\n\x1b[1m\x1b[36mTuora First-Time Setup\x1b[0m");
     println!("{}", "─".repeat(50));
 
     // Check if already configured — single keychain read covers both existence and source
     if get_existing_api_key().is_some() {
-        let source = if std::env::var("TUORA_API_KEY").map(|k| !k.is_empty()).unwrap_or(false) {
+        let source = if std::env::var("TUORA_API_KEY")
+            .map(|k| !k.is_empty())
+            .unwrap_or(false)
+        {
             "environment variable (TUORA_API_KEY)"
         } else {
             "OS keyring"
         };
         println!(
-            "\n{}⚠{} An API key is already stored in the {}.",
-            "\x1b[33m", "\x1b[0m", source
+            "\n\x1b[33m⚠\x1b[0m An API key is already stored in the {}.",
+            source
         );
         print!("Do you want to reinitialize with a new API key? [y/N]: ");
         io::stdout().flush().context("Failed to flush stdout")?;
@@ -45,28 +48,22 @@ pub async fn run(ledger_url: String) -> Result<()> {
 
     // Validate the API key with a cloud ping
     Progress::status("validating API key");
-    
+
     match validate_key(&api_key, &ledger_url).await {
         Ok(_) => {
             // Store in keyring
             store_api_key(&api_key).context("Failed to store API key")?;
 
-            println!(
-                "\n{}\x2713{} API key validated and stored securely",
-                "\x1b[32m", "\x1b[0m"
-            );
-            println!(
-                "{}\x2713{} Ready to scan. Run {}tuora{} to begin.",
-                "\x1b[32m", "\x1b[0m", "\x1b[1m", "\x1b[0m"
-            );
+            println!("\n\x1b[32m\x2713\x1b[0m API key validated and stored securely");
+            println!("\x1b[32m\x2713\x1b[0m Ready to scan. Run \x1b[1mtuora\x1b[0m to begin.");
 
             info!("API key configured successfully");
             Ok(())
         }
         Err(e) => {
             eprintln!(
-                "\n{}\x2717{} API key validation failed: {}{}",
-                "\x1b[31m", "\x1b[0m", e, "\x1b[0m"
+                "\n\x1b[31m\x2717\x1b[0m API key validation failed: {}\x1b[0m",
+                e
             );
             eprintln!("\nPlease check your API key and try again.");
             eprintln!("Get your API key from: https://runtuora.com/dashboard");
@@ -79,8 +76,8 @@ pub async fn run(ledger_url: String) -> Result<()> {
 async fn validate_key(api_key: &str, ledger_url: &str) -> Result<()> {
     debug!("Validating API key with ledger service");
 
-    let mut auth_client = AuthClient::new(ledger_url)
-        .context("Failed to initialize auth client")?;
+    let mut auth_client =
+        AuthClient::new(ledger_url).context("Failed to initialize auth client")?;
 
     match auth_client.verify(api_key).await {
         Ok(_) => {

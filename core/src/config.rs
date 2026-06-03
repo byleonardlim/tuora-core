@@ -3,7 +3,6 @@ use std::path::PathBuf;
 
 const DEFAULT_LEDGER_URL: &str = "http://0.0.0.0:3000/v1";
 /// const DEFAULT_LEDGER_URL: &str = "https://api.runtuora.com/v1";
-
 /// Resolve the ledger service URL from the environment, falling back to the production default.
 pub fn ledger_url() -> String {
     std::env::var("TUORA_LEDGER_URL").unwrap_or_else(|_| DEFAULT_LEDGER_URL.to_string())
@@ -11,7 +10,10 @@ pub fn ledger_url() -> String {
 
 /// Tuora: Pre-Deployment Static Analysis for Vibe-Coded Applications
 #[derive(Debug, Clone, Parser)]
-#[command(name = "tuora", about = "Zero-footprint security scanner for AI-generated code")]
+#[command(
+    name = "tuora",
+    about = "Zero-footprint security scanner for AI-generated code"
+)]
 #[command(version, disable_help_subcommand = true)]
 pub struct Cli {
     /// Tuora API key for wallet verification

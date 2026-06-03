@@ -17,7 +17,7 @@ pub struct Reporter {
 fn wrap_text(text: &str, width: usize) -> Vec<String> {
     let mut lines = Vec::new();
     let mut current_line = String::new();
-    
+
     for word in text.split_whitespace() {
         // Check if adding this word would exceed width
         let new_len = if current_line.is_empty() {
@@ -25,7 +25,7 @@ fn wrap_text(text: &str, width: usize) -> Vec<String> {
         } else {
             current_line.len() + 1 + word.len()
         };
-        
+
         if new_len > width && !current_line.is_empty() {
             lines.push(current_line);
             current_line = word.to_string();
@@ -36,17 +36,23 @@ fn wrap_text(text: &str, width: usize) -> Vec<String> {
             current_line.push_str(word);
         }
     }
-    
+
     if !current_line.is_empty() {
         lines.push(current_line);
     }
-    
+
     lines
 }
 
 /// ANSI color for a health score value.
 fn score_color(score: u32) -> &'static str {
-    if score >= 80 { "\x1b[32m" } else if score >= 50 { "\x1b[33m" } else { "\x1b[31m" }
+    if score >= 80 {
+        "\x1b[32m"
+    } else if score >= 50 {
+        "\x1b[33m"
+    } else {
+        "\x1b[31m"
+    }
 }
 
 impl Reporter {
@@ -148,7 +154,10 @@ impl Reporter {
         // Mode banner
         let (mode_label, mode_color) = if result.framework != crate::types::Framework::Unknown {
             (
-                format!("Agentic + SAST ({}) — 13 rules active", result.framework.name()),
+                format!(
+                    "Agentic + SAST ({}) — 13 rules active",
+                    result.framework.name()
+                ),
                 "\x1b[36m",
             )
         } else {
@@ -159,23 +168,23 @@ impl Reporter {
         };
         writeln!(
             stdout,
-            "  {}Mode:{}         {}{}{}\n",
-            "\x1b[90m", "\x1b[0m", mode_color, mode_label, "\x1b[0m"
+            "  \x1b[90mMode:\x1b[0m         {}{}\x1b[0m\n",
+            mode_color, mode_label
         )?;
 
         // Health Score
         writeln!(
             stdout,
-            "  {}Health Score:  {}{}/100{}\n",
-            "\x1b[1m", score_color(result.health_score), result.health_score, "\x1b[0m"
+            "  \x1b[1mHealth Score:  {}{}/100\x1b[0m\n",
+            score_color(result.health_score),
+            result.health_score
         )?;
 
         // Violations summary
         if result.violations.is_empty() {
             writeln!(
                 stdout,
-                "  {}\x1b[32m✓{} No issues detected! Great job!\n",
-                "\x1b[1m", "\x1b[0m"
+                "  \x1b[1m\x1b[32m✓\x1b[0m No issues detected! Great job!\n"
             )?;
         } else {
             self.render_violations_ansi(&mut stdout, &result.violations)?;
@@ -184,14 +193,17 @@ impl Reporter {
         // Footer
         writeln!(
             stdout,
-            "\n{}────────────────────────────────────────────────────────────{}\n",
-            "\x1b[90m", "\x1b[0m"
+            "\n\x1b[90m────────────────────────────────────────────────────────────\x1b[0m\n"
         )?;
 
         Ok(())
     }
 
-    fn render_violations_ansi(&self, stdout: &mut io::Stdout, violations: &[Violation]) -> Result<()> {
+    fn render_violations_ansi(
+        &self,
+        stdout: &mut io::Stdout,
+        violations: &[Violation],
+    ) -> Result<()> {
         // Count by severity for summary
         let mut critical = 0;
         let mut high = 0;
@@ -210,13 +222,8 @@ impl Reporter {
         // Summary header
         writeln!(
             stdout,
-            "  {}Issues Found: {} Critical, {} High, {} Medium, {} Low{}\n",
-            "\x1b[1m",
-            critical,
-            high,
-            medium,
-            low,
-            "\x1b[0m"
+            "  \x1b[1mIssues Found: {} Critical, {} High, {} Medium, {} Low\x1b[0m\n",
+            critical, high, medium, low
         )?;
 
         // Group violations by rule_id
@@ -242,7 +249,12 @@ impl Reporter {
     }
 
     /// Render a group of violations for the same rule with word wrapping at 88 chars
-    fn render_violation_group(&self, stdout: &mut io::Stdout, rule_id: &RuleId, violations: &[&Violation]) -> Result<()> {
+    fn render_violation_group(
+        &self,
+        stdout: &mut io::Stdout,
+        rule_id: &RuleId,
+        violations: &[&Violation],
+    ) -> Result<()> {
         let first = violations.first().unwrap();
         let severity = first.severity;
 
@@ -258,52 +270,48 @@ impl Reporter {
         // Rule header with ID, severity, and title
         writeln!(
             stdout,
-            "{} {} {} [{}] {} {} \x1b[0m",
+            "{} {} {} [{}] \x1b[1m\x1b[97m {} \x1b[0m",
             icon,
             rule_id.0,
             severity.ansi_color(),
             severity_str,
-            "\x1b[1m\x1b[97m",
             first.tool_target
         )?;
 
         // Description (wrapped at 88 chars, indented)
         let desc_lines = wrap_text(&first.plain_message, 88);
         for line in &desc_lines {
-            writeln!(stdout, "  {}│{} {}", "\x1b[90m", "\x1b[0m", line)?;
+            writeln!(stdout, "  \x1b[90m│\x1b[0m {}", line)?;
         }
 
         // Affected locations
-        writeln!(stdout, "  {}│{}", "\x1b[90m", "\x1b[0m")?;
-        writeln!(stdout, "  {}│{} \x1b[1mAffected locations:\x1b[0m", "\x1b[90m", "\x1b[0m")?;
+        writeln!(stdout, "  \x1b[90m│\x1b[0m")?;
+        writeln!(
+            stdout,
+            "  \x1b[90m│\x1b[0m \x1b[1mAffected locations:\x1b[0m"
+        )?;
         for v in violations {
             let line_str = v.line_number.map(|l| format!(":{}", l)).unwrap_or_default();
             writeln!(
                 stdout,
-                "  {}│{}   • {}{}",
-                "\x1b[90m",
-                "\x1b[0m",
+                "  \x1b[90m│\x1b[0m   • {}{}",
                 v.file_path.display(),
                 line_str
             )?;
         }
 
         // Remediation (wrapped at 88 chars)
-        writeln!(stdout, "  {}│{}", "\x1b[90m", "\x1b[0m")?;
+        writeln!(stdout, "  \x1b[90m│\x1b[0m")?;
         let fix_lines = wrap_text(&first.plain_remediation, 88);
         if let Some(first_line) = fix_lines.first() {
             writeln!(
                 stdout,
-                "  {}│{} {}💡 Fix:{} {}",
-                "\x1b[90m",
-                "\x1b[0m",
-                "\x1b[32m",
-                "\x1b[0m",
+                "  \x1b[90m│\x1b[0m \x1b[32m💡 Fix:\x1b[0m {}",
                 first_line
             )?;
         }
         for line in fix_lines.iter().skip(1) {
-            writeln!(stdout, "  {}│{}     {}", "\x1b[90m", "\x1b[0m", line)?;
+            writeln!(stdout, "  \x1b[90m│\x1b[0m     {}", line)?;
         }
 
         writeln!(stdout)?;
@@ -337,7 +345,9 @@ impl Reporter {
             writeln!(
                 stdout,
                 "  {}[{}]{} {}",
-                dim, timestamp, reset,
+                dim,
+                timestamp,
+                reset,
                 path.display()
             )?;
         }
@@ -346,8 +356,12 @@ impl Reporter {
             writeln!(
                 stdout,
                 "  {}↳ No change in issues  ({}ms)  Health: {}{}{}/100{}\n",
-                dim, elapsed_ms, bold,
-                score_color(health_score), health_score, reset
+                dim,
+                elapsed_ms,
+                bold,
+                score_color(health_score),
+                health_score,
+                reset
             )?;
             return Ok(());
         }
@@ -357,21 +371,21 @@ impl Reporter {
             if entry.is_new {
                 writeln!(
                     stdout,
-                    "  {}↳ NEW   {} {} [{}]{} {}{}  {}:{}{}",
-                    "\x1b[31m",
+                    "  \x1b[31m↳ NEW   {} {} [{}]{} {}{}  {}:{}{}",
                     v.rule_id.0,
                     v.severity.ansi_color(),
                     format!("{:?}", v.severity).to_uppercase(),
                     reset,
-                    bold, v.tool_target, reset,
+                    bold,
+                    v.tool_target,
+                    reset,
                     v.file_path.display(),
                     v.line_number.map(|l| format!(":{}", l)).unwrap_or_default()
                 )?;
             } else {
                 writeln!(
                     stdout,
-                    "  {}↳ FIXED {} — {}{}{}",
-                    "\x1b[32m",
+                    "  \x1b[32m↳ FIXED {} — {}{}{}",
                     v.rule_id.0,
                     dim,
                     v.file_path.display(),
@@ -384,8 +398,7 @@ impl Reporter {
         writeln!(
             stdout,
             "  {}↳ Health: {}{}{}/100{}  {}({}ms){}\n",
-            dim, bold, score_col, health_score, reset,
-            dim, elapsed_ms, reset
+            dim, bold, score_col, health_score, reset, dim, elapsed_ms, reset
         )?;
 
         Ok(())
@@ -401,7 +414,10 @@ impl Reporter {
         println!("Rules Checked: {}", result.rules_evaluated);
         println!("Duration: {}ms", result.scan_duration_ms);
         let mode_label = if result.framework != crate::types::Framework::Unknown {
-            format!("Agentic + SAST ({}) - 13 rules active", result.framework.name())
+            format!(
+                "Agentic + SAST ({}) - 13 rules active",
+                result.framework.name()
+            )
         } else {
             "Traditional SAST - 7 rules active (AI-specific checks N/A)".to_string()
         };

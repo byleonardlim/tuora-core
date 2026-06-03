@@ -27,9 +27,9 @@ impl Severity {
     pub fn ansi_color(&self) -> &'static str {
         match self {
             Severity::Critical => "\x1b[31m", // Red
-            Severity::High => "\x1b[91m",    // Bright Red
-            Severity::Medium => "\x1b[33m",  // Yellow
-            Severity::Low => "\x1b[36m",     // Cyan
+            Severity::High => "\x1b[91m",     // Bright Red
+            Severity::Medium => "\x1b[33m",   // Yellow
+            Severity::Low => "\x1b[36m",      // Cyan
         }
     }
 }
@@ -52,11 +52,11 @@ pub enum OwaspCategory {
 /// Rule category for organizing compliance checks
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum RuleCategory {
-    Security,      // BZ-SEC-*
-    Financial,     // BZ-FIN-*
-    Operational,   // BZ-OPS-*
-    Hygiene,       // BZ-HYG-*
-    Sast,          // BZ-SAST-* (Traditional SAST, non-agentic)
+    Security,    // BZ-SEC-*
+    Financial,   // BZ-FIN-*
+    Operational, // BZ-OPS-*
+    Hygiene,     // BZ-HYG-*
+    Sast,        // BZ-SAST-* (Traditional SAST, non-agentic)
 }
 
 /// Unique identifier for a compliance rule
@@ -139,12 +139,9 @@ pub struct ScanResult {
 impl ScanResult {
     /// Calculate health score from violations
     pub fn calculate_score(&mut self) {
-        let total_deduction: u32 = self.violations.iter()
-            .map(|v| v.severity.weight())
-            .sum();
+        let total_deduction: u32 = self.violations.iter().map(|v| v.severity.weight()).sum();
         self.health_score = 100u32.saturating_sub(total_deduction);
     }
 }
 
-pub use tuora_types::{AuthResponse, TelemetryEvent, MetaStats, ViolationSummary};
-
+pub use tuora_types::{AuthResponse, MetaStats, TelemetryEvent, ViolationSummary};

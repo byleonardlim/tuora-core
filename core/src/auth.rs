@@ -49,11 +49,15 @@ impl AuthClient {
     /// Verify API key and check wallet balance
     pub async fn verify(&mut self, api_key: &str) -> Result<AuthResponse> {
         // Check cache first
-        if let Some(cached) = &self.cache {
-            if cached.cached_at.elapsed() < self.cache_ttl && cached.remaining_units > 0 {
-                debug!("Using cached auth response, remaining_units: {}", cached.remaining_units);
-                return Ok(cached.response.clone());
-            }
+        if let Some(cached) = &self.cache
+            && cached.cached_at.elapsed() < self.cache_ttl
+            && cached.remaining_units > 0
+        {
+            debug!(
+                "Using cached auth response, remaining_units: {}",
+                cached.remaining_units
+            );
+            return Ok(cached.response.clone());
         }
 
         // Make cloud verification call
@@ -125,11 +129,14 @@ impl AuthClient {
 
     /// Deduct a unit from cache (called after successful scan)
     pub fn consume_cached_unit(&mut self) {
-        if let Some(cached) = &mut self.cache {
-            if cached.remaining_units > 0 {
-                cached.remaining_units -= 1;
-                debug!("Consumed cached auth unit, {} remaining", cached.remaining_units);
-            }
+        if let Some(cached) = &mut self.cache
+            && cached.remaining_units > 0
+        {
+            cached.remaining_units -= 1;
+            debug!(
+                "Consumed cached auth unit, {} remaining",
+                cached.remaining_units
+            );
         }
     }
 }
@@ -143,7 +150,7 @@ mod tests {
         let hobby = PricingTier::Hobby;
         let standard = PricingTier::Standard;
         let volume = PricingTier::VolumeDiscount;
-        
+
         // Just verify they exist and don't panic
         let _ = format!("{:?}", hobby);
         let _ = format!("{:?}", standard);

@@ -19,7 +19,10 @@ fn main() {
 
     let rule_engine_toml = rule_engine_dir.join("Cargo.toml");
     if !rule_engine_toml.exists() {
-        println!("cargo::warning=rule-engine crate not found at {}, skipping WASM build", rule_engine_dir.display());
+        println!(
+            "cargo::warning=rule-engine crate not found at {}, skipping WASM build",
+            rule_engine_dir.display()
+        );
         println!("cargo::rustc-env=RULE_ENGINE_VERSION=0.0.0");
         return;
     }
@@ -78,7 +81,10 @@ fn main() {
     let raw = match std::fs::read(&source) {
         Ok(b) => b,
         Err(e) => {
-            println!("cargo::warning=Failed to read built WASM from {}: {e}", source.display());
+            println!(
+                "cargo::warning=Failed to read built WASM from {}: {e}",
+                source.display()
+            );
             return;
         }
     };
@@ -90,7 +96,10 @@ fn main() {
     let _ = std::fs::create_dir_all(&dev_dir);
 
     if let Err(e) = std::fs::write(&dest, &stripped) {
-        println!("cargo::warning=Failed to write WASM to {}: {e}", dest.display());
+        println!(
+            "cargo::warning=Failed to write WASM to {}: {e}",
+            dest.display()
+        );
         return;
     }
 
@@ -102,10 +111,10 @@ fn read_cargo_version(path: &std::path::Path) -> String {
     let content = std::fs::read_to_string(path).unwrap_or_default();
     for line in content.lines() {
         let trimmed = line.trim();
-        if trimmed.starts_with("version") {
-            if let Some(val) = trimmed.split('=').nth(1) {
-                return val.trim().trim_matches('"').to_string();
-            }
+        if trimmed.starts_with("version")
+            && let Some(val) = trimmed.split('=').nth(1)
+        {
+            return val.trim().trim_matches('"').to_string();
         }
     }
     "0.0.0".to_string()
