@@ -35,19 +35,7 @@ jobs:
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Check if already released
-        id: check
-        run: |
-          # Check if last commit was already a release
-          if git log -1 --pretty=%B | grep -q "^chore: release v"; then
-            echo "Already released, skipping"
-            echo "skip=true" >> $GITHUB_OUTPUT
-            exit 0
-          fi
-          echo "skip=false" >> $GITHUB_OUTPUT
-
       - name: Bump version
-        if: steps.check.outputs.skip != 'true'
         id: bump
         run: |
           CURRENT=$(grep 'version = "' core/Cargo.toml | head -1 | sed 's/.*"\(.*\)".*/\1/')
@@ -93,7 +81,6 @@ jobs:
           git tag "v$NEW"
 
       - name: Push changes
-        if: steps.check.outputs.skip != 'true'
         run: |
           git push origin main
           git push origin "v${{ steps.bump.outputs.version }}"
