@@ -160,7 +160,7 @@ jobs:
         if: contains(matrix.target, 'musl')
         run: |
           sudo apt-get update
-          sudo apt-get install -y musl-tools
+          sudo apt-get install -y musl-tools binutils-aarch64-linux-gnu
 
       - name: Build (native)
         if: '!matrix.use_cross'
@@ -177,7 +177,11 @@ jobs:
 
       - name: Strip binary
         run: |
-          strip target/${{ matrix.target }}/release/${{ matrix.binary }}
+          STRIP=strip
+          if [ "${{ matrix.target }}" = "aarch64-unknown-linux-musl" ]; then
+            STRIP=aarch64-linux-gnu-strip
+          fi
+          $STRIP target/${{ matrix.target }}/release/${{ matrix.binary }}
           ls -lh target/${{ matrix.target }}/release/${{ matrix.binary }}
 
       - name: Calculate checksum
