@@ -86,6 +86,7 @@ jobs:
       - name: Build (cross)
         if: matrix.use_cross
         env:
+          CROSS_CONTAINER_OPTS: "-e TUORA_SIGNING_PUBKEY"
           TUORA_SIGNING_PUBKEY: ${{ secrets.TUORA_SIGNING_PUBKEY }}
         run: cross build --release --target ${{ matrix.target }} -p tuora
 
