@@ -265,21 +265,16 @@ jobs:
     needs: release
     runs-on: ${{ matrix.os }}
     strategy:
+      fail-fast: false
       matrix:
         os: [ubuntu-latest, macos-latest]
     steps:
       - uses: actions/checkout@v4
 
       - name: Test install.sh
-        env:
-          VERSION: ${{ needs.release.outputs.tag }}
         run: |
-          # Set a custom install directory for testing
           export INSTALL_DIR="$HOME/.local/bin"
+          export VERSION="${{ needs.release.outputs.tag }}"
           mkdir -p "$INSTALL_DIR"
-          
-          # Run installer
-          cat core/install.sh | sh
-          
-          # Verify installation
+          sh core/install.sh
           "$INSTALL_DIR/tuora" --version
