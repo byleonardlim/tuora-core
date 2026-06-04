@@ -209,6 +209,8 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: write
+    outputs:
+      tag: ${{ steps.tag.outputs.name }}
     steps:
       - uses: actions/checkout@v4
 
@@ -269,6 +271,8 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Test install.sh
+        env:
+          VERSION: ${{ needs.release.outputs.tag }}
         run: |
           # Set a custom install directory for testing
           export INSTALL_DIR="$HOME/.local/bin"
