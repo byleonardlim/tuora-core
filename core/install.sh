@@ -58,7 +58,13 @@ main() {
     
     # Determine download URL
     if [ "$VERSION" = "latest" ]; then
-        DOWNLOAD_URL="https://github.com/${REPO}/releases/latest/download/tuora-${PLATFORM}"
+        LATEST_TAG=$(curl -fsSL "https://api.github.com/repos/${REPO}/releases" | grep '"tag_name"' | head -1 | sed 's/.*"tag_name": *"\([^"]*\)".*/\1/')
+        if [ -z "$LATEST_TAG" ]; then
+            echo "Error: Could not determine latest release tag"
+            exit 1
+        fi
+        echo "Latest version: $LATEST_TAG"
+        DOWNLOAD_URL="https://github.com/${REPO}/releases/download/${LATEST_TAG}/tuora-${PLATFORM}"
     else
         DOWNLOAD_URL="https://github.com/${REPO}/releases/download/${VERSION}/tuora-${PLATFORM}"
     fi
