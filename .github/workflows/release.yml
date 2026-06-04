@@ -189,10 +189,15 @@ jobs:
           $STRIP target/${{ matrix.target }}/release/${{ matrix.binary }}
           ls -lh target/${{ matrix.target }}/release/${{ matrix.binary }}
 
+      - name: Rename binary
+        run: |
+          cp target/${{ matrix.target }}/release/${{ matrix.binary }} \
+             target/${{ matrix.target }}/release/${{ matrix.asset_name }}
+
       - name: Calculate checksum
         run: |
           cd target/${{ matrix.target }}/release
-          shasum -a 256 ${{ matrix.binary }} > ${{ matrix.asset_name }}.sha256
+          shasum -a 256 ${{ matrix.asset_name }} > ${{ matrix.asset_name }}.sha256
           cat ${{ matrix.asset_name }}.sha256
 
       - name: Upload artifact
@@ -200,7 +205,7 @@ jobs:
         with:
           name: ${{ matrix.asset_name }}
           path: |
-            target/${{ matrix.target }}/release/${{ matrix.binary }}
+            target/${{ matrix.target }}/release/${{ matrix.asset_name }}
             target/${{ matrix.target }}/release/${{ matrix.asset_name }}.sha256
 
   release:
