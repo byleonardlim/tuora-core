@@ -160,7 +160,12 @@ jobs:
         if: contains(matrix.target, 'musl')
         run: |
           sudo apt-get update
-          sudo apt-get install -y musl-tools binutils-aarch64-linux-gnu
+          sudo apt-get install -y musl-tools
+
+      - name: Install aarch64 binutils (for Linux ARM64)
+        if: matrix.target == 'aarch64-unknown-linux-musl'
+        run: |
+          sudo apt-get install -y binutils-aarch64-linux-gnu
 
       - name: Build (native)
         if: '!matrix.use_cross'
@@ -207,6 +212,19 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Resolve tag
+        id: tag
+        run: |
+          if [ "${{ github.ref_type }}" = "tag" ]; then
+            echo "name=${{ github.ref_name }}" >> $GITHUB_OUTPUT
+          else
+            VERSION=$(grep 'version = "' core/Cargo.toml | head -1 | sed 's/.*"\(.*\)".*/\1/')
+            TAG="v$VERSION"
+            echo "name=$TAG" >> $GITHUB_OUTPUT
+            git tag "$TAG" || echo "Tag $TAG already exists"
+            git push origin "$TAG" || echo "Tag already pushed"
+          fi
+
       - name: Download all artifacts
         uses: actions/download-artifact@v4
         with:
@@ -230,6 +248,7 @@ jobs:
       - name: Create Release
         uses: softprops/action-gh-release@v1
         with:
+          tag_name: ${{ steps.tag.outputs.name }}
           files: |
             release/tuora-*
             release/SHA256SUMS
