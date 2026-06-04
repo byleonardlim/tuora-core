@@ -5,7 +5,7 @@
 set -e
 
 # Configuration
-REPO="tuora/tuora"
+REPO="byleonardlim/tuora-core"
 # User-level installation only (no sudo required)
 INSTALL_DIR="${INSTALL_DIR:-$HOME/.local/bin}"
 VERSION="${VERSION:-latest}"

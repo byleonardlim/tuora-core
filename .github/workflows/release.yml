@@ -253,7 +253,7 @@ jobs:
             release/tuora-*
             release/SHA256SUMS
           draft: false
-          prerelease: ${{ startsWith(github.ref_name, 'v0.') || contains(github.ref_name, '-rc') || contains(github.ref_name, '-beta') || contains(github.ref_name, '-alpha') }}
+          prerelease: ${{ startsWith(steps.tag.outputs.name, 'v0.') || contains(steps.tag.outputs.name, '-rc') || contains(steps.tag.outputs.name, '-beta') || contains(steps.tag.outputs.name, '-alpha') }}
           generate_release_notes: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
