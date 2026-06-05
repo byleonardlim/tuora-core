@@ -141,12 +141,13 @@ pub async fn run(cfg: ScanConfig) -> Result<()> {
     .map(|(c, r)| (Some(c), Some(r)))
     .unwrap_or((None, None));
 
-    // Stage 2: Fetch rule bundle
+    // Stage 2: Fetch rule bundle (cache-aware: version check → disk → download)
     let mut rule_backend: RuleBackend = Progress::run(
         "loading rules",
         || async {
+            let auth = auth_response.as_ref().unwrap().clone();
             let fetcher = RuleBundleFetcher::new(&cfg.ledger_url, &cfg.api_key);
-            match fetcher.fetch(auth_response.as_ref().unwrap()).await {
+            match fetcher.fetch(&auth).await {
                 Ok(engine) => Ok::<_, anyhow::Error>(engine),
                 Err(e) => {
                     eprintln!("\n\x1b[33mRule fetch failed:\x1b[0m{}", e);
