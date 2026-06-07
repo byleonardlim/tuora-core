@@ -105,21 +105,21 @@ fn format_api_error(status: reqwest::StatusCode, body: &str) -> String {
             status.canonical_reason().unwrap_or("Unknown")
         );
     }
-    
+
     // Truncate long error bodies
     let truncated = if body.len() > MAX_ERROR_BODY_LEN {
         format!("{}... [truncated]", &body[..MAX_ERROR_BODY_LEN])
     } else {
         body.to_string()
     };
-    
+
     format!("API error {}: {}", status, truncated)
 }
 
 /// Check if a status code indicates a potentially transient error
 fn is_retryable_status(status: reqwest::StatusCode) -> bool {
-    RETRYABLE_STATUS_CODES.contains(&status.as_u16()) || 
-    status.is_server_error() && status.as_u16() != 501 // 501 Not Implemented is permanent
+    RETRYABLE_STATUS_CODES.contains(&status.as_u16())
+        || status.is_server_error() && status.as_u16() != 501 // 501 Not Implemented is permanent
 }
 
 impl RuleBundleFetcher {
@@ -190,20 +190,26 @@ impl RuleBundleFetcher {
     /// Includes retry logic for transient failures.
     async fn check_server_version(&self) -> Result<String> {
         let url = format!("{}/bundle-version", self.ledger_url);
-        
+
         let mut last_error = None;
         for attempt in 0..MAX_RETRIES {
             if attempt > 0 {
                 let delay = BASE_RETRY_DELAY_MS * 2_u64.pow(attempt - 1);
-                debug!("Retrying version check after {}ms (attempt {}/{})", delay, attempt + 1, MAX_RETRIES);
+                debug!(
+                    "Retrying version check after {}ms (attempt {}/{})",
+                    delay,
+                    attempt + 1,
+                    MAX_RETRIES
+                );
                 tokio::time::sleep(std::time::Duration::from_millis(delay)).await;
             }
-            
-            match self.client
+
+            match self
+                .client
                 .get(&url)
                 .bearer_auth(&self.api_key)
                 .send()
-                .await 
+                .await
             {
                 Ok(response) => {
                     let status = response.status();
@@ -211,16 +217,16 @@ impl RuleBundleFetcher {
                         let parsed: BundleVersionResponse = response.json().await?;
                         return Ok(parsed.version);
                     }
-                    
+
                     let body = response.text().await.unwrap_or_default();
                     let error_msg = format_api_error(status, &body);
-                    
+
                     if is_retryable_status(status) && attempt < MAX_RETRIES - 1 {
                         warn!("Version check failed with retryable error: {}", error_msg);
                         last_error = Some(error_msg);
                         continue;
                     }
-                    
+
                     bail!("Version check failed: {}", error_msg);
                 }
                 Err(e) => {
@@ -230,20 +236,23 @@ impl RuleBundleFetcher {
                     } else {
                         format!("Request failed: {}", e)
                     };
-                    
+
                     if (is_timeout || e.is_connect()) && attempt < MAX_RETRIES - 1 {
                         warn!("Version check network error (will retry): {}", error_msg);
                         last_error = Some(error_msg);
                         continue;
                     }
-                    
+
                     bail!("Version check failed: {}", error_msg);
                 }
             }
         }
-        
-        bail!("Version check failed after {} retries: {}", MAX_RETRIES, 
-              last_error.unwrap_or_else(|| "Unknown error".to_string()));
+
+        bail!(
+            "Version check failed after {} retries: {}",
+            MAX_RETRIES,
+            last_error.unwrap_or_else(|| "Unknown error".to_string())
+        );
     }
 
     /// Try to load a cached bundle from disk for the given version.
@@ -310,43 +319,52 @@ impl RuleBundleFetcher {
     /// Fetch from cloud API with retry logic for transient errors
     async fn fetch_from_api(&self, _auth: &AuthResponse) -> Result<WasmRuleEngine> {
         let url = format!("{}/rules-bundle", self.ledger_url);
-        
+
         let request = RulesBundleRequest {
             platform: get_platform_string(),
         };
-        
+
         let mut last_error = None;
         for attempt in 0..MAX_RETRIES {
             if attempt > 0 {
                 let delay = BASE_RETRY_DELAY_MS * 2_u64.pow(attempt - 1);
-                info!("Retrying rules bundle fetch after {}ms (attempt {}/{})", delay, attempt + 1, MAX_RETRIES);
+                info!(
+                    "Retrying rules bundle fetch after {}ms (attempt {}/{})",
+                    delay,
+                    attempt + 1,
+                    MAX_RETRIES
+                );
                 tokio::time::sleep(std::time::Duration::from_millis(delay)).await;
             }
-            
+
             debug!(url = %url, attempt = attempt + 1, "Fetching rules bundle from API");
-            
-            match self.client
+
+            match self
+                .client
                 .post(&url)
                 .bearer_auth(&self.api_key)
                 .json(&request)
                 .send()
-                .await 
+                .await
             {
                 Ok(response) => {
                     let status = response.status();
                     if status.is_success() {
                         return self.process_bundle_response(response).await;
                     }
-                    
+
                     let body = response.text().await.unwrap_or_default();
                     let error_msg = format_api_error(status, &body);
-                    
+
                     if is_retryable_status(status) && attempt < MAX_RETRIES - 1 {
-                        warn!("Rules bundle fetch failed with retryable error: {}", error_msg);
+                        warn!(
+                            "Rules bundle fetch failed with retryable error: {}",
+                            error_msg
+                        );
                         last_error = Some(error_msg);
                         continue;
                     }
-                    
+
                     bail!("{}", error_msg);
                 }
                 Err(e) => {
@@ -356,22 +374,28 @@ impl RuleBundleFetcher {
                     } else {
                         format!("Request failed: {}", e)
                     };
-                    
+
                     if (is_timeout || e.is_connect()) && attempt < MAX_RETRIES - 1 {
-                        warn!("Rules bundle fetch network error (will retry): {}", error_msg);
+                        warn!(
+                            "Rules bundle fetch network error (will retry): {}",
+                            error_msg
+                        );
                         last_error = Some(error_msg);
                         continue;
                     }
-                    
+
                     bail!("{}", error_msg);
                 }
             }
         }
-        
-        bail!("Rules bundle fetch failed after {} retries: {}", MAX_RETRIES,
-              last_error.unwrap_or_else(|| "Unknown error".to_string()));
+
+        bail!(
+            "Rules bundle fetch failed after {} retries: {}",
+            MAX_RETRIES,
+            last_error.unwrap_or_else(|| "Unknown error".to_string())
+        );
     }
-    
+
     /// Process a successful bundle response
     async fn process_bundle_response(&self, response: reqwest::Response) -> Result<WasmRuleEngine> {
         let bundle: RulesBundleResponse = response.json().await?;
