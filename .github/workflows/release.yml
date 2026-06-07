@@ -71,13 +71,13 @@ jobs:
           git config user.email "actions@github.com"
           git add core/Cargo.toml
           git commit -m "chore: release v$NEW"
-          git push origin main
+          git push origin HEAD:${{ github.ref_name }}
 
           echo "version=$NEW" >> $GITHUB_OUTPUT
           echo "tag=v$NEW" >> $GITHUB_OUTPUT
 
-          git tag "v$NEW" || echo "Tag v$NEW already exists"
-          git push origin "v$NEW" || echo "Tag already pushed"
+          git tag "v$NEW"
+          git push origin "v$NEW"
 
   # ─────────────────────────────────────────────
   # Resolve previous tag (when bump = none)
@@ -114,6 +114,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.bump-version.outputs.tag || needs.resolve-version.outputs.tag || github.ref }}
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
       - run: cargo test --workspace
@@ -122,7 +124,8 @@ jobs:
 
   build:
     name: Build ${{ matrix.target }}
-    needs: test
+    needs: [test, bump-version, resolve-version]
+    if: always() && needs.test.result == 'success'
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
@@ -155,6 +158,8 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.bump-version.outputs.tag || needs.resolve-version.outputs.tag || github.ref }}
 
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
@@ -180,13 +185,15 @@ jobs:
         if: '!matrix.use_cross'
         env:
           TUORA_SIGNING_PUBKEY: ${{ secrets.TUORA_SIGNING_PUBKEY }}
+          TUORA_LEDGER_URL: ${{ secrets.TUORA_LEDGER_URL }}
         run: cargo build --release --target ${{ matrix.target }} -p tuora
 
       - name: Build (cross)
         if: matrix.use_cross
         env:
-          CROSS_CONTAINER_OPTS: "-e TUORA_SIGNING_PUBKEY"
+          CROSS_CONTAINER_OPTS: "-e TUORA_SIGNING_PUBKEY -e TUORA_LEDGER_URL"
           TUORA_SIGNING_PUBKEY: ${{ secrets.TUORA_SIGNING_PUBKEY }}
+          TUORA_LEDGER_URL: ${{ secrets.TUORA_LEDGER_URL }}
         run: cross build --release --target ${{ matrix.target }} -p tuora
 
       - name: Strip binary
@@ -220,7 +227,7 @@ jobs:
   release:
     name: Create Release
     needs: [build, bump-version, resolve-version]
-    if: always() && needs.build.result == 'success'
+    if: always() && needs.build.result == 'success' && (needs.bump-version.result == 'success' || needs.bump-version.result == 'skipped') && (needs.resolve-version.result == 'success' || needs.resolve-version.result == 'skipped')
     runs-on: ubuntu-latest
     permissions:
       contents: write

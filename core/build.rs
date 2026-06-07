@@ -182,16 +182,32 @@ fn encode_leb128(mut value: usize) -> Vec<u8> {
 ///
 /// Resolution order:
 ///   1. `TUORA_LEDGER_URL` environment variable (set by CI or local dev override)
-///   2. Hardcoded production default: `https://api.runtuora.com/v1`
+///
+/// Release builds panic at compile time if the variable is absent or empty.
 fn inject_ledger_url() {
     println!("cargo::rerun-if-env-changed=TUORA_LEDGER_URL");
 
+    let profile = std::env::var("PROFILE").unwrap_or_default();
+
     let url = std::env::var("TUORA_LEDGER_URL")
         .ok()
-        .filter(|v| !v.trim().is_empty())
-        .unwrap_or_else(|| "https://api.runtuora.com/v1".to_string());
+        .filter(|v| !v.trim().is_empty());
 
-    println!("cargo::rustc-env=TUORA_LEDGER_URL_VALUE={}", url.trim());
+    match url {
+        Some(u) => {
+            println!("cargo::rustc-env=TUORA_LEDGER_URL_VALUE={}", u.trim());
+        }
+        None if profile == "release" => {
+            panic!(
+                "\n\nERROR: TUORA_LEDGER_URL is not set.\nRelease builds require the ledger \
+                 service URL to be injected via the TUORA_LEDGER_URL environment variable \
+                 (set it as a GitHub Actions secret).\n"
+            );
+        }
+        None => {
+            println!("cargo::rustc-env=TUORA_LEDGER_URL_VALUE=");
+        }
+    }
 }
 
 /// Resolve the Ed25519 public key and forward it as TUORA_SIGNING_PUBKEY_VALUE.

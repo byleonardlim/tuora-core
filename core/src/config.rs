@@ -6,7 +6,6 @@ use std::path::PathBuf;
 /// Resolution order:
 ///   1. `TUORA_LEDGER_URL` runtime env var (local dev override)
 ///   2. `TUORA_LEDGER_URL_VALUE` baked in at compile time by `build.rs`
-///      (defaults to `https://api.runtuora.com/v1` unless overridden at build time)
 pub fn ledger_url() -> String {
     std::env::var("TUORA_LEDGER_URL")
         .ok()
