@@ -300,12 +300,10 @@ pub fn verify_signature(wasm_bytes: &[u8], signature: &[u8], public_key: &[u8]) 
     );
 
     let public_key = UnparsedPublicKey::new(&signature::ED25519, public_key);
-    public_key
-        .verify(wasm_bytes, signature)
-        .map_err(|e| {
-            debug!(error = ?e, "Ed25519 signature verification failed");
-            anyhow::anyhow!("Invalid Ed25519 signature")
-        })?;
+    public_key.verify(wasm_bytes, signature).map_err(|e| {
+        debug!(error = ?e, "Ed25519 signature verification failed");
+        anyhow::anyhow!("Invalid Ed25519 signature")
+    })?;
 
     debug!("Ed25519 signature verified successfully");
     Ok(())
