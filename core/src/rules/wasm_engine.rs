@@ -271,16 +271,42 @@ impl WasmRuleEngine {
     }
 }
 
+/// Simple hex encoder for debug logging
+fn to_hex(bytes: &[u8]) -> String {
+    const HEX: &[u8] = b"0123456789abcdef";
+    let mut result = String::with_capacity(bytes.len() * 2);
+    for &b in bytes {
+        result.push(HEX[(b >> 4) as usize] as char);
+        result.push(HEX[(b & 0xf) as usize] as char);
+    }
+    result
+}
+
 /// Verify Ed25519 signature (production builds)
 #[cfg(not(debug_assertions))]
 pub fn verify_signature(wasm_bytes: &[u8], signature: &[u8], public_key: &[u8]) -> Result<()> {
     use ring::signature::{self, UnparsedPublicKey};
+    use tracing::debug;
+
+    debug!(
+        wasm_len = wasm_bytes.len(),
+        wasm_prefix = %to_hex(&wasm_bytes[..8.min(wasm_bytes.len())]),
+        sig_len = signature.len(),
+        sig_prefix = %to_hex(&signature[..8.min(signature.len())]),
+        pk_len = public_key.len(),
+        pk_prefix = %to_hex(&public_key[..8.min(public_key.len())]),
+        "Verifying Ed25519 signature"
+    );
 
     let public_key = UnparsedPublicKey::new(&signature::ED25519, public_key);
     public_key
         .verify(wasm_bytes, signature)
-        .map_err(|_| anyhow::anyhow!("Invalid Ed25519 signature"))?;
+        .map_err(|e| {
+            debug!(error = ?e, "Ed25519 signature verification failed");
+            anyhow::anyhow!("Invalid Ed25519 signature")
+        })?;
 
+    debug!("Ed25519 signature verified successfully");
     Ok(())
 }
 
