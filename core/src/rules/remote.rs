@@ -279,7 +279,23 @@ impl RuleBundleFetcher {
                 bail!("Cached bundle too short to contain signature");
             }
             let (sig_bytes, wasm) = bytes.split_at(ED25519_SIGNATURE_LEN);
-            super::wasm_engine::verify_signature(wasm, sig_bytes, &public_key)?;
+
+            if let Err(verify_err) =
+                super::wasm_engine::verify_signature(wasm, sig_bytes, &public_key)
+            {
+                tracing::error!(
+                    error = %verify_err,
+                    cache_path = %cache_path.display(),
+                    "Cached bundle signature verification failed - cache may be corrupted or keys rotated"
+                );
+                return Err(verify_err).context(
+                    "Invalid Ed25519 signature from cache. The cached bundle may be:\n\
+                     1. Corrupted (delete cache and retry)\n\
+                     2. Signed with old key after key rotation\n\
+                     3. Downloaded with different API key\n\
+                     Try: rm -rf ~/.cache/tuora/ and retry",
+                );
+            }
             debug!("Cached bundle signature verified");
             wasm.to_vec()
         };
@@ -439,7 +455,26 @@ impl RuleBundleFetcher {
                 pk_prefix = %to_hex(&public_key[..8.min(public_key.len())]),
                 "About to verify signature"
             );
-            super::wasm_engine::verify_signature(&wasm_bytes, &sig_bytes, &public_key)?;
+
+            if let Err(verify_err) =
+                super::wasm_engine::verify_signature(&wasm_bytes, &sig_bytes, &public_key)
+            {
+                tracing::error!(
+                    error = %verify_err,
+                    wasm_size = wasm_bytes.len(),
+                    sig_size = sig_bytes.len(),
+                    pk_size = public_key.len(),
+                    "Signature verification failed - check that TUORA_SIGNING_PUBKEY matches SIGNING_PRIVATE_KEY"
+                );
+                return Err(verify_err).context(
+                    "Invalid Ed25519 signature. Possible causes:\n\
+                     1. The signing keypair mismatch: TUORA_SIGNING_PUBKEY doesn't match SIGNING_PRIVATE_KEY\n\
+                     2. Corrupted WASM bundle during download\n\
+                     3. Wrong public key extracted (must be 32 raw bytes, not 44-byte DER)\n\
+                     4. Key rotation without client rebuild\n\
+                     Run with RUST_LOG=debug for full signature details."
+                );
+            }
             debug!("WASM signature verified");
         }
 

@@ -292,22 +292,47 @@ fn to_hex(bytes: &[u8]) -> String {
 #[cfg(not(debug_assertions))]
 pub fn verify_signature(wasm_bytes: &[u8], signature: &[u8], public_key: &[u8]) -> Result<()> {
     use ring::signature::{self, UnparsedPublicKey};
-    use tracing::debug;
+    use tracing::{debug, error};
 
+    // Log full details for debugging signature mismatches
     debug!(
         wasm_len = wasm_bytes.len(),
-        wasm_prefix = %to_hex(&wasm_bytes[..8.min(wasm_bytes.len())]),
+        wasm_hash = %to_hex(&ring::digest::digest(&ring::digest::SHA256, wasm_bytes).as_ref()[..]),
         sig_len = signature.len(),
-        sig_prefix = %to_hex(&signature[..8.min(signature.len())]),
+        sig_full = %to_hex(signature),
         pk_len = public_key.len(),
-        pk_prefix = %to_hex(&public_key[..8.min(public_key.len())]),
+        pk_full = %to_hex(public_key),
         "Verifying Ed25519 signature"
     );
 
-    let public_key = UnparsedPublicKey::new(&signature::ED25519, public_key);
-    public_key.verify(wasm_bytes, signature).map_err(|e| {
-        debug!(error = ?e, "Ed25519 signature verification failed");
-        anyhow::anyhow!("Invalid Ed25519 signature")
+    // Validate signature length before attempting verification
+    if signature.len() != 64 {
+        error!(
+            sig_len = signature.len(),
+            "Invalid signature length (expected 64 bytes)"
+        );
+        anyhow::bail!(
+            "Invalid Ed25519 signature: expected 64 bytes, got {}",
+            signature.len()
+        );
+    }
+
+    // Validate public key length
+    if public_key.len() != 32 {
+        error!(
+            pk_len = public_key.len(),
+            "Invalid public key length (expected 32 bytes)"
+        );
+        anyhow::bail!(
+            "Invalid Ed25519 public key: expected 32 bytes, got {}",
+            public_key.len()
+        );
+    }
+
+    let unparsed_pk = UnparsedPublicKey::new(&signature::ED25519, public_key);
+    unparsed_pk.verify(wasm_bytes, signature).map_err(|e| {
+        error!(error = ?e, "Ed25519 signature verification failed - keypair mismatch or data corruption");
+        anyhow::anyhow!("Invalid Ed25519 signature - possible causes: keypair mismatch, corrupted WASM, or signature tampering")
     })?;
 
     debug!("Ed25519 signature verified successfully");
