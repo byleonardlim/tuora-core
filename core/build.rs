@@ -217,6 +217,18 @@ fn inject_ledger_url() {
 ///   2. `core/assets/signing_key.pub` on disk (local dev fallback only)
 ///
 /// Release builds panic at compile time if neither source yields a non-empty value.
+///
+/// # Key Format Requirements
+///
+/// The public key MUST be in raw Ed25519 format:
+/// - Exactly 32 bytes when decoded
+/// - Base64-encoded for embedding (44 characters)
+/// - NOT in PEM format (no BEGIN/END headers)
+///
+/// To extract the correct format from an Ed25519 private key (32 raw bytes, not 44-byte DER):
+/// ```bash
+/// openssl pkey -in signing_key.pem -pubout -outform DER | tail -c 32 | base64
+/// ```
 fn inject_signing_key() {
     println!("cargo::rerun-if-env-changed=TUORA_SIGNING_PUBKEY");
     println!("cargo::rerun-if-changed=assets/signing_key.pub");

@@ -20,6 +20,9 @@ const RETRYABLE_STATUS_CODES: &[u16] = &[502, 503, 504];
 const MAX_RETRIES: u32 = 3;
 /// Base delay for exponential backoff (milliseconds)
 const BASE_RETRY_DELAY_MS: u64 = 1000;
+/// Ed25519 signature length in bytes (used in release builds only)
+#[cfg(not(debug_assertions))]
+const ED25519_SIGNATURE_LEN: usize = 64;
 
 /// Response from rules bundle API
 #[derive(Debug, Deserialize)]
@@ -271,11 +274,11 @@ impl RuleBundleFetcher {
         let wasm_bytes = {
             let bytes = decrypt_with_api_key(&data, &self.api_key)?;
             let public_key = get_signing_public_key()?;
-            // Cached bundles carry the signature in the first 64 bytes
-            if bytes.len() < 64 {
+            // Cached bundles carry the signature in the first ED25519_SIGNATURE_LEN bytes
+            if bytes.len() < ED25519_SIGNATURE_LEN {
                 bail!("Cached bundle too short to contain signature");
             }
-            let (sig_bytes, wasm) = bytes.split_at(64);
+            let (sig_bytes, wasm) = bytes.split_at(ED25519_SIGNATURE_LEN);
             super::wasm_engine::verify_signature(wasm, sig_bytes, &public_key)?;
             debug!("Cached bundle signature verified");
             wasm.to_vec()
@@ -419,12 +422,23 @@ impl RuleBundleFetcher {
         let wasm_bytes = base64::engine::general_purpose::STANDARD.decode(&bundle.wasm)?;
         let sig_bytes = base64::engine::general_purpose::STANDARD.decode(&bundle.signature)?;
 
-        debug!(wasm_size = wasm_bytes.len(), "Decoded WASM bundle");
+        debug!(
+            wasm_size = wasm_bytes.len(),
+            sig_size = sig_bytes.len(),
+            wasm_prefix = %to_hex(&wasm_bytes[..8.min(wasm_bytes.len())]),
+            sig_prefix = %to_hex(&sig_bytes[..8.min(sig_bytes.len())]),
+            "Decoded WASM bundle"
+        );
 
         // Verify signature (skipped in dev, enforced in release)
         #[cfg(not(debug_assertions))]
         {
             let public_key = get_signing_public_key()?;
+            debug!(
+                pk_size = public_key.len(),
+                pk_prefix = %to_hex(&public_key[..8.min(public_key.len())]),
+                "About to verify signature"
+            );
             super::wasm_engine::verify_signature(&wasm_bytes, &sig_bytes, &public_key)?;
             debug!("WASM signature verified");
         }
@@ -492,7 +506,7 @@ impl RuleBundleFetcher {
         Ok(result)
     }
 
-    /// Cache bundle to disk, storing [64-byte sig][wasm] before encryption.
+    /// Cache bundle to disk, storing [64-byte Ed25519 sig][wasm] before encryption.
     #[cfg_attr(debug_assertions, allow(unused_variables))]
     async fn cache_bundle(&self, version: &str, sig_bytes: &[u8], wasm_bytes: &[u8]) -> Result<()> {
         let cache_path = self.cache_path(version)?;
@@ -537,6 +551,17 @@ fn get_platform_string() -> String {
     format!("{}-{}", os, arch)
 }
 
+/// Simple hex encoder for debug output
+fn to_hex(bytes: &[u8]) -> String {
+    const HEX: &[u8] = b"0123456789abcdef";
+    let mut result = String::with_capacity(bytes.len() * 2);
+    for &b in bytes {
+        result.push(HEX[(b >> 4) as usize] as char);
+        result.push(HEX[(b & 0xf) as usize] as char);
+    }
+    result
+}
+
 /// Get embedded Ed25519 public key for signature verification
 #[cfg(not(debug_assertions))]
 fn get_signing_public_key() -> Result<Vec<u8>> {
@@ -546,9 +571,28 @@ fn get_signing_public_key() -> Result<Vec<u8>> {
             "Signing public key was not embedded at build time (TUORA_SIGNING_PUBKEY not set)"
         );
     }
-    base64::engine::general_purpose::STANDARD
+
+    let decoded = base64::engine::general_purpose::STANDARD
         .decode(PUBLIC_KEY_BASE64.trim())
-        .map_err(|e| anyhow::anyhow!("Failed to decode public key: {}", e))
+        .map_err(|e| anyhow::anyhow!("Failed to decode public key: {}", e))?;
+
+    // Ed25519 public keys must be exactly 32 bytes (raw format, not PEM)
+    if decoded.len() != 32 {
+        anyhow::bail!(
+            "Invalid public key format: expected 32 bytes for Ed25519, got {}. \
+             Ensure TUORA_SIGNING_PUBKEY is a base64-encoded raw public key (not PEM).",
+            decoded.len()
+        );
+    }
+
+    debug!(
+        pk_base64_len = PUBLIC_KEY_BASE64.len(),
+        pk_decoded_len = decoded.len(),
+        pk_prefix = %to_hex(&decoded[..8.min(decoded.len())]),
+        "Loaded embedded public key"
+    );
+
+    Ok(decoded)
 }
 
 /// Encrypt data with AES-256-GCM using a key derived from the API key.

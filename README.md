@@ -110,6 +110,16 @@ cargo build --release
 cargo run -- watch ./test-workspace
 ```
 
+## Troubleshooting
+
+### "Invalid Ed25519 signature" or "Signing public key not embedded"
+
+These errors indicate a signing key mismatch between the CLI client and the cloud API. See the complete [Key Management Guide](documentation/key-management.md) for:
+- Key generation and extraction commands
+- CI/CD secret configuration
+- Build-time embedding requirements
+- Key rotation procedures
+
 ## License
 
 MIT - Open Core (scanner engine open source, threat signatures SaaS)
