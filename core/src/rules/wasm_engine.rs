@@ -291,7 +291,7 @@ fn to_hex(bytes: &[u8]) -> String {
 /// - `public_key`: Ed25519 public key in raw format (32 bytes, NOT PEM)
 #[cfg(not(debug_assertions))]
 pub fn verify_signature(wasm_bytes: &[u8], signature: &[u8], public_key: &[u8]) -> Result<()> {
-    use ring::digest::{self, digest};
+    use ring::digest::{self, digest, SHA256};
     use ring::signature::{self, UnparsedPublicKey};
     use tracing::{debug, error};
 
