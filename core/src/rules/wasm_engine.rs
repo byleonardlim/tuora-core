@@ -272,6 +272,7 @@ impl WasmRuleEngine {
 }
 
 /// Simple hex encoder for debug logging
+#[allow(dead_code)]
 fn to_hex(bytes: &[u8]) -> String {
     const HEX: &[u8] = b"0123456789abcdef";
     let mut result = String::with_capacity(bytes.len() * 2);
