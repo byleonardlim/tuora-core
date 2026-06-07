@@ -1,5 +1,5 @@
 # Documentation
-documentation/
+!documentation/
 
 # Rust
 target/
@@ -32,4 +32,4 @@ Thumbs.db
 .cache/
 
 # Cloud backend — proprietary, tracked in a separate private repo
-cloud/
+!cloud/

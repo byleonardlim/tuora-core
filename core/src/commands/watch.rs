@@ -150,7 +150,7 @@ pub async fn run(cfg: ScanConfig) -> Result<()> {
             match fetcher.fetch(&auth).await {
                 Ok(engine) => Ok::<_, anyhow::Error>(engine),
                 Err(e) => {
-                    eprintln!("\n\x1b[33mRule fetch failed:\x1b[0m{}", e);
+                    eprintln!("\n\x1b[33mRule fetch failed:\x1b[0m {}", e);
                     Err(e)
                 }
             }

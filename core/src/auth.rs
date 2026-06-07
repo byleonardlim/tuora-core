@@ -100,7 +100,19 @@ impl AuthClient {
         let status = response.status();
         if !status.is_success() {
             let text = response.text().await.unwrap_or_default();
-            anyhow::bail!("Ledger service returned error: {} - {}", status, text);
+            // Strip HTML from error messages for cleaner output
+            let clean_text = if text.trim().starts_with('<') || text.contains("<!DOCTYPE") {
+                format!(
+                    "The Tuora cloud service is temporarily unavailable (HTTP {} {}). Please try again in a few moments.",
+                    status.as_u16(),
+                    status.canonical_reason().unwrap_or("Unknown")
+                )
+            } else if text.len() > 200 {
+                format!("{}... [truncated]", &text[..200])
+            } else {
+                text
+            };
+            anyhow::bail!("Ledger service returned error: {}", clean_text);
         }
 
         let auth_response: AuthResponse = response
