@@ -232,23 +232,58 @@ fn inject_ledger_url() {
 fn inject_signing_key() {
     println!("cargo::rerun-if-env-changed=TUORA_SIGNING_PUBKEY");
     println!("cargo::rerun-if-changed=assets/signing_key.pub");
+    // Also re-run if build.rs itself changes
+    println!("cargo::rerun-if-changed=build.rs");
 
     let profile = std::env::var("PROFILE").unwrap_or_default();
 
-    let key = std::env::var("TUORA_SIGNING_PUBKEY")
+    // Debug: log what we see
+    let env_var_result = std::env::var("TUORA_SIGNING_PUBKEY");
+    match &env_var_result {
+        Ok(v) => println!(
+            "cargo::warning=TUORA_SIGNING_PUBKEY found: len={}, trimmed_len={}",
+            v.len(),
+            v.trim().len()
+        ),
+        Err(e) => println!("cargo::warning=TUORA_SIGNING_PUBKEY not found: {:?}", e),
+    }
+
+    let key = env_var_result
         .ok()
-        .filter(|v| !v.trim().is_empty())
+        .filter(|v| {
+            let trimmed = v.trim();
+            let is_non_empty = !trimmed.is_empty();
+            println!("cargo::warning=TUORA_SIGNING_PUBKEY filter: raw_len={}, trimmed_len={}, non_empty={}", v.len(), trimmed.len(), is_non_empty);
+            is_non_empty
+        })
         .or_else(|| {
             let path = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("assets/signing_key.pub");
-            std::fs::read_to_string(path)
+            println!("cargo::warning=Checking fallback file: {}", path.display());
+            let file_result = std::fs::read_to_string(&path);
+            match &file_result {
+                Ok(content) => println!("cargo::warning=Fallback file found: len={}", content.len()),
+                Err(e) => println!("cargo::warning=Fallback file not found: {:?}", e),
+            }
+            file_result
                 .ok()
                 .map(|s| s.trim().to_string())
-                .filter(|s| !s.is_empty())
+                .filter(|s| {
+                    let is_non_empty = !s.is_empty();
+                    println!("cargo::warning=Fallback file filter: len={}, non_empty={}", s.len(), is_non_empty);
+                    is_non_empty
+                })
         });
 
     match key {
         Some(k) => {
-            println!("cargo::rustc-env=TUORA_SIGNING_PUBKEY_VALUE={}", k.trim());
+            let trimmed = k.trim();
+            println!(
+                "cargo::warning=EMBEDDING KEY: len={}, first_10={}, last_10={}",
+                trimmed.len(),
+                &trimmed[..trimmed.len().min(10)],
+                &trimmed[trimmed.len().saturating_sub(10)..]
+            );
+            println!("cargo::rustc-env=TUORA_SIGNING_PUBKEY_VALUE={}", trimmed);
         }
         None if profile == "release" => {
             panic!(
@@ -258,6 +293,7 @@ fn inject_signing_key() {
             );
         }
         None => {
+            println!("cargo::warning=EMBEDDING EMPTY KEY (debug build fallback)");
             println!("cargo::rustc-env=TUORA_SIGNING_PUBKEY_VALUE=");
         }
     }

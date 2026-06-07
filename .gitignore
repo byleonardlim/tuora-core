@@ -16,6 +16,7 @@ scripts/
 core/assets/signing_key
 core/assets/signing_key.pub
 core/assets/*.pem
+core/assets/*
 
 # IDE
 .vscode/
