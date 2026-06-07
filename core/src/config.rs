@@ -1,11 +1,17 @@
 use clap::{Parser, Subcommand};
 use std::path::PathBuf;
 
-const DEFAULT_LEDGER_URL: &str = "http://0.0.0.0:3000/v1";
-/// const DEFAULT_LEDGER_URL: &str = "https://api.runtuora.com/v1";
-/// Resolve the ledger service URL from the environment, falling back to the production default.
+/// Resolve the ledger service URL.
+///
+/// Resolution order:
+///   1. `TUORA_LEDGER_URL` runtime env var (local dev override)
+///   2. `TUORA_LEDGER_URL_VALUE` baked in at compile time by `build.rs`
+///      (defaults to `https://api.runtuora.com/v1` unless overridden at build time)
 pub fn ledger_url() -> String {
-    std::env::var("TUORA_LEDGER_URL").unwrap_or_else(|_| DEFAULT_LEDGER_URL.to_string())
+    std::env::var("TUORA_LEDGER_URL")
+        .ok()
+        .filter(|v| !v.trim().is_empty())
+        .unwrap_or_else(|| env!("TUORA_LEDGER_URL_VALUE").to_string())
 }
 
 /// Tuora: Pre-Deployment Static Analysis for Vibe-Coded Applications

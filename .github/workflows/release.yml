@@ -7,7 +7,7 @@ on:
   workflow_dispatch:
     inputs:
       bump:
-        description: 'Version bump type'
+        description: 'Version bump type (none = redeploy previous tag)'
         required: true
         default: 'patch'
         type: choice
@@ -16,11 +16,6 @@ on:
           - minor
           - major
           - none
-      build_only:
-        description: 'Skip bump, just build and release (for existing tag)'
-        required: false
-        default: false
-        type: boolean
 
 env:
   CARGO_TERM_COLOR: always
@@ -28,7 +23,7 @@ env:
 jobs:
   bump-version:
     name: Bump Version
-    if: github.event_name == 'workflow_dispatch' && github.event.inputs.build_only != 'true'
+    if: github.event_name == 'workflow_dispatch' && github.event.inputs.bump != 'none'
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -48,59 +43,74 @@ jobs:
           echo "Current version: $CURRENT"
 
           BUMP="${{ github.event.inputs.bump }}"
+          MAJOR=$(echo $CURRENT | cut -d. -f1)
+          MINOR=$(echo $CURRENT | cut -d. -f2)
+          PATCH=$(echo $CURRENT | cut -d. -f3)
 
-          if [ "$BUMP" = "none" ]; then
-            # No bump - tag current version as-is
-            NEW="$CURRENT"
-            echo "No bump requested, using current version"
-          else
-            # Calculate new version
-            MAJOR=$(echo $CURRENT | cut -d. -f1)
-            MINOR=$(echo $CURRENT | cut -d. -f2)
-            PATCH=$(echo $CURRENT | cut -d. -f3)
+          case "$BUMP" in
+            major)
+              MAJOR=$((MAJOR + 1))
+              MINOR=0
+              PATCH=0
+              ;;
+            minor)
+              MINOR=$((MINOR + 1))
+              PATCH=0
+              ;;
+            patch)
+              PATCH=$((PATCH + 1))
+              ;;
+          esac
 
-            case "$BUMP" in
-              major)
-                MAJOR=$((MAJOR + 1))
-                MINOR=0
-                PATCH=0
-                ;;
-              minor)
-                MINOR=$((MINOR + 1))
-                PATCH=0
-                ;;
-              patch)
-                PATCH=$((PATCH + 1))
-                ;;
-            esac
+          NEW="$MAJOR.$MINOR.$PATCH"
+          echo "Bumped to: $NEW"
 
-            NEW="$MAJOR.$MINOR.$PATCH"
-            echo "Bumped to: $NEW"
+          sed -i "s/^version = \"$CURRENT\"/version = \"$NEW\"/" core/Cargo.toml
 
-            # Update Cargo.toml
-            sed -i "s/^version = \"$CURRENT\"/version = \"$NEW\"/" core/Cargo.toml
-
-            git config user.name "GitHub Actions"
-            git config user.email "actions@github.com"
-            git add core/Cargo.toml
-            git commit -m "chore: release v$NEW"
-          fi
+          git config user.name "GitHub Actions"
+          git config user.email "actions@github.com"
+          git add core/Cargo.toml
+          git commit -m "chore: release v$NEW"
+          git push origin main
 
           echo "version=$NEW" >> $GITHUB_OUTPUT
           echo "tag=v$NEW" >> $GITHUB_OUTPUT
 
-          # Create and push tag
           git tag "v$NEW" || echo "Tag v$NEW already exists"
           git push origin "v$NEW" || echo "Tag already pushed"
 
-      - name: Push version bump commit
-        if: github.event.inputs.bump != 'none'
+  # ─────────────────────────────────────────────
+  # Resolve previous tag (when bump = none)
+  # ─────────────────────────────────────────────
+  resolve-version:
+    name: Resolve Previous Tag
+    if: github.event_name == 'workflow_dispatch' && github.event.inputs.bump == 'none'
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.tag.outputs.version }}
+      tag: ${{ steps.tag.outputs.tag }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Get latest version tag
+        id: tag
         run: |
-          git push origin main
+          TAG=$(git tag --list 'v[0-9]*.[0-9]*.[0-9]*' --sort=-version:refname | head -1)
+          if [ -z "$TAG" ]; then
+            echo "Error: No previous v* tag found"
+            exit 1
+          fi
+          VERSION=${TAG#v}
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "tag=$TAG" >> $GITHUB_OUTPUT
+          echo "Redeploying previous tag: $TAG"
 
   test:
     name: Quality Checks
-    if: github.event_name != 'workflow_dispatch' || github.event.inputs.build_only == 'true'
+    needs: [bump-version, resolve-version]
+    if: always() && (needs.bump-version.result == 'success' || needs.bump-version.result == 'skipped') && (needs.resolve-version.result == 'success' || needs.resolve-version.result == 'skipped')
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -112,7 +122,6 @@ jobs:
 
   build:
     name: Build ${{ matrix.target }}
-    if: github.event_name != 'workflow_dispatch' || github.event.inputs.build_only == 'true'
     needs: test
     runs-on: ${{ matrix.os }}
     strategy:
@@ -210,7 +219,8 @@ jobs:
 
   release:
     name: Create Release
-    needs: build
+    needs: [build, bump-version, resolve-version]
+    if: always() && needs.build.result == 'success'
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -218,12 +228,18 @@ jobs:
       tag: ${{ steps.tag.outputs.name }}
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Resolve tag
         id: tag
         run: |
           if [ "${{ github.ref_type }}" = "tag" ]; then
             echo "name=${{ github.ref_name }}" >> $GITHUB_OUTPUT
+          elif [ -n "${{ needs.bump-version.outputs.tag }}" ]; then
+            echo "name=${{ needs.bump-version.outputs.tag }}" >> $GITHUB_OUTPUT
+          elif [ -n "${{ needs.resolve-version.outputs.tag }}" ]; then
+            echo "name=${{ needs.resolve-version.outputs.tag }}" >> $GITHUB_OUTPUT
           else
             VERSION=$(grep 'version = "' core/Cargo.toml | head -1 | sed 's/.*"\(.*\)".*/\1/')
             TAG="v$VERSION"
@@ -268,6 +284,7 @@ jobs:
   test-install:
     name: Test Install Script
     needs: release
+    if: always() && needs.release.result == 'success'
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false

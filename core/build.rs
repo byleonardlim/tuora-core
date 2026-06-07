@@ -9,6 +9,7 @@ use std::process::Command;
 
 fn main() {
     inject_signing_key();
+    inject_ledger_url();
 
     let profile = std::env::var("PROFILE").unwrap_or_default();
     if profile != "debug" {
@@ -175,6 +176,22 @@ fn encode_leb128(mut value: usize) -> Vec<u8> {
         }
     }
     out
+}
+
+/// Resolve the ledger service base URL and forward it as TUORA_LEDGER_URL_VALUE.
+///
+/// Resolution order:
+///   1. `TUORA_LEDGER_URL` environment variable (set by CI or local dev override)
+///   2. Hardcoded production default: `https://api.runtuora.com/v1`
+fn inject_ledger_url() {
+    println!("cargo::rerun-if-env-changed=TUORA_LEDGER_URL");
+
+    let url = std::env::var("TUORA_LEDGER_URL")
+        .ok()
+        .filter(|v| !v.trim().is_empty())
+        .unwrap_or_else(|| "https://api.runtuora.com/v1".to_string());
+
+    println!("cargo::rustc-env=TUORA_LEDGER_URL_VALUE={}", url.trim());
 }
 
 /// Resolve the Ed25519 public key and forward it as TUORA_SIGNING_PUBKEY_VALUE.
