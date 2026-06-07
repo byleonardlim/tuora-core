@@ -252,6 +252,8 @@ jobs:
             VERSION=$(grep 'version = "' core/Cargo.toml | head -1 | sed 's/.*"\(.*\)".*/\1/')
             TAG="v$VERSION"
             echo "name=$TAG" >> $GITHUB_OUTPUT
+            git config user.name "GitHub Actions"
+            git config user.email "actions@github.com"
             git tag "$TAG" || echo "Tag $TAG already exists"
             git push origin "$TAG" || echo "Tag already pushed"
           fi
