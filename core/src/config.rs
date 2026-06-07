@@ -7,7 +7,8 @@ use std::path::PathBuf;
 ///   1. `TUORA_LEDGER_URL` runtime env var (local dev override)
 ///   2. `TUORA_LEDGER_URL_VALUE` baked in at compile time by `build.rs`
 pub fn ledger_url() -> String {
-    #[allow(clippy::unwrap_or_default)] // unwrap_or_default() yields "" not the compile-time baked value
+    #[allow(clippy::unwrap_or_default)]
+    // unwrap_or_default() yields "" not the compile-time baked value
     std::env::var("TUORA_LEDGER_URL")
         .ok()
         .filter(|v| !v.trim().is_empty())
