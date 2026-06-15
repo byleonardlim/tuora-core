@@ -290,17 +290,19 @@ pub async fn run(cfg: ScanConfig) -> Result<()> {
 
                     if is_file_not_found {
                         // Extract path from error message and unwatch if it's a deleted directory
-                        if let Some(path) = extract_path_from_error(&err_str) {
-                            if watched_dirs.contains(&path) {
-                                debug!("Watched directory deleted, unwatching: {}", path.display());
-                                let _ = watcher.unwatch(&path);
-                                watched_dirs.remove(&path);
-                                // Also remove any tracked files in this directory
-                                let prefix = path.as_path();
-                                state.files.retain(|p, _| !p.starts_with(prefix));
-                                state.violations_by_file.retain(|p, _| !p.starts_with(prefix));
-                                continue;
-                            }
+                        if let Some(path) = extract_path_from_error(&err_str)
+                            && watched_dirs.contains(&path)
+                        {
+                            debug!("Watched directory deleted, unwatching: {}", path.display());
+                            let _ = watcher.unwatch(&path);
+                            watched_dirs.remove(&path);
+                            // Also remove any tracked files in this directory
+                            let prefix = path.as_path();
+                            state.files.retain(|p, _| !p.starts_with(prefix));
+                            state
+                                .violations_by_file
+                                .retain(|p, _| !p.starts_with(prefix));
+                            continue;
                         }
                         debug!("Ignoring file-not-found error from deleted file: {}", e);
                     } else {
