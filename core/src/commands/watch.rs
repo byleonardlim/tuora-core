@@ -230,12 +230,16 @@ pub async fn run(cfg: ScanConfig) -> Result<()> {
         PollWatcher::new(tx, config).context("Failed to create poll file watcher")?
     };
 
+    // Track watched directories so we can unwatch them if deleted
+    let mut watched_dirs: std::collections::HashSet<PathBuf> = std::collections::HashSet::new();
+
     // Add non-recursive watches for each allowed directory
     for dir in &watch_dirs {
         if let Err(e) = watcher.watch(dir, RecursiveMode::NonRecursive) {
             warn!("Failed to watch directory {}: {}", dir.display(), e);
         } else {
             debug!("Watching directory: {}", dir.display());
+            watched_dirs.insert(dir.clone());
         }
     }
 
@@ -267,6 +271,7 @@ pub async fn run(cfg: ScanConfig) -> Result<()> {
                                     );
                                 } else {
                                     debug!("Added watch for new directory: {}", path.display());
+                                    watched_dirs.insert(path.clone());
                                 }
                             }
                             debug!("Processing fs event: {}", path.display());
@@ -278,7 +283,29 @@ pub async fn run(cfg: ScanConfig) -> Result<()> {
                     }
                 }
                 Ok(Err(e)) => {
-                    eprintln!("\x1b[31mWatch error:\x1b[0m {}", e);
+                    // Check if this is a file-not-found error on a watched directory
+                    let err_str = e.to_string();
+                    let is_file_not_found = err_str.contains("No such file or directory")
+                        || err_str.contains("os error 2");
+
+                    if is_file_not_found {
+                        // Extract path from error message and unwatch if it's a deleted directory
+                        if let Some(path) = extract_path_from_error(&err_str) {
+                            if watched_dirs.contains(&path) {
+                                debug!("Watched directory deleted, unwatching: {}", path.display());
+                                let _ = watcher.unwatch(&path);
+                                watched_dirs.remove(&path);
+                                // Also remove any tracked files in this directory
+                                let prefix = path.as_path();
+                                state.files.retain(|p, _| !p.starts_with(prefix));
+                                state.violations_by_file.retain(|p, _| !p.starts_with(prefix));
+                                continue;
+                            }
+                        }
+                        debug!("Ignoring file-not-found error from deleted file: {}", e);
+                    } else {
+                        eprintln!("\x1b[31mWatch error:\x1b[0m {}", e);
+                    }
                 }
                 Err(mpsc::TryRecvError::Empty) => break,
                 Err(mpsc::TryRecvError::Disconnected) => {
@@ -631,6 +658,21 @@ fn chrono_now() -> String {
     let m = (secs % 3600) / 60;
     let s = secs % 60;
     format!("{:02}:{:02}:{:02}", h, m, s)
+}
+
+/// Extract a path from an IO error message.
+/// Expected format: "IO error for operation on <path>: ..."
+fn extract_path_from_error(err_str: &str) -> Option<PathBuf> {
+    // Match pattern: "IO error for operation on <path>:"
+    let prefix = "IO error for operation on ";
+    if let Some(start) = err_str.find(prefix) {
+        let after_prefix = &err_str[start + prefix.len()..];
+        if let Some(end) = after_prefix.find(':') {
+            let path_str = &after_prefix[..end];
+            return Some(PathBuf::from(path_str));
+        }
+    }
+    None
 }
 
 /// Non-blocking telemetry flush on clean exit.
