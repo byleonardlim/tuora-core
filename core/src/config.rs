@@ -40,6 +40,8 @@ pub struct Cli {
 pub enum Commands {
     /// Initialize API key configuration (first-run setup)
     Init,
+    /// Upgrade tuora to the latest release
+    Upgrade,
     /// Watch a directory and re-evaluate on file changes
     Watch {
         /// Path to the workspace directory to watch (defaults to current directory)

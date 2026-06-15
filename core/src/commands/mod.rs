@@ -5,4 +5,5 @@
 //! - `scan`: Default scan operation (also the default when no subcommand given)
 
 pub mod init;
+pub mod upgrade;
 pub mod watch;

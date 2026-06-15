@@ -19,10 +19,11 @@ mod rules;
 mod scanner;
 mod telemetry;
 mod types;
+mod update;
 
 use crate::{
     banner::print_banner,
-    commands::{init, watch},
+    commands::{init, upgrade, watch},
     config::{Cli, Commands, ScanConfig, ledger_url},
     credentials::get_api_key,
 };
@@ -33,6 +34,9 @@ use tracing::debug;
 async fn main() {
     // Display banner immediately
     print_banner();
+
+    // Kick off update check in the background — never blocks startup
+    let update_handle = update::spawn_check();
 
     // Initialize logging (only for debug output, not user-facing)
     if let Err(e) = init_logging() {
@@ -48,6 +52,12 @@ async fn main() {
     match &cli.command {
         Some(Commands::Init) => {
             if let Err(e) = init::run(ledger_url()).await {
+                eprintln!("\n\x1b[31mError:\x1b[0m {}", e);
+                std::process::exit(1);
+            }
+        }
+        Some(Commands::Upgrade) => {
+            if let Err(e) = upgrade::run().await {
                 eprintln!("\n\x1b[31mError:\x1b[0m {}", e);
                 std::process::exit(1);
             }
@@ -72,6 +82,8 @@ async fn main() {
             print_help();
         }
     }
+
+    update::print_if_outdated(update_handle).await;
 }
 
 /// Initialize tracing subscriber
@@ -99,6 +111,7 @@ fn print_help() {
     println!("    \x1b[36mtuora init\x1b[0m            Set up your API key for first use");
     println!("    \x1b[36mtuora watch\x1b[0m           Scan and watch the current directory");
     println!("    \x1b[36mtuora watch <path>\x1b[0m    Scan and watch a specific directory path");
+    println!("    \x1b[36mtuora upgrade\x1b[0m         Upgrade to the latest release");
     println!();
     println!("  \x1b[1mOptions:\x1b[0m");
     println!("    \x1b[90m-a, --api-key <KEY>\x1b[0m    Tuora API key (or set TUORA_API_KEY)");
