@@ -146,14 +146,14 @@ impl RuleBundleFetcher {
     ///   1. Check the current server version via GET /v1/bundle-version.
     ///   2. If a matching cached bundle exists on disk, decrypt and load it.
     ///   3. Otherwise, download, verify, cache, then load.
-    pub async fn fetch(&self, auth: &AuthResponse) -> Result<WasmRuleEngine> {
+    pub async fn fetch(&self, auth: &AuthResponse) -> Result<(WasmRuleEngine, String)> {
         // Dev mode: load from filesystem (build.rs compiles it at build time)
         #[cfg(debug_assertions)]
         {
             match self.try_load_dev().await {
                 Ok(engine) => {
                     info!("Loaded rules from dev/ directory");
-                    return Ok(engine);
+                    return Ok((engine, "dev".to_string()));
                 }
                 Err(e) => {
                     warn!(error = %e, "Dev WASM not found — was build.rs skipped? Falling back to API");
@@ -167,14 +167,14 @@ impl RuleBundleFetcher {
 
     /// Cache-aware fetch: version check → cache hit → download fallback.
     #[cfg_attr(debug_assertions, allow(dead_code))]
-    async fn fetch_with_cache(&self, auth: &AuthResponse) -> Result<WasmRuleEngine> {
+    async fn fetch_with_cache(&self, auth: &AuthResponse) -> Result<(WasmRuleEngine, String)> {
         match self.check_server_version().await {
             Ok(server_version) => {
                 debug!(version = %server_version, "Server bundle version");
                 match self.try_load_cache(&server_version).await {
                     Ok(engine) => {
                         info!(version = %server_version, "Loaded rules from disk cache");
-                        return Ok(engine);
+                        return Ok((engine, server_version));
                     }
                     Err(e) => {
                         debug!(error = %e, "Cache miss, downloading bundle");
@@ -336,7 +336,7 @@ impl RuleBundleFetcher {
     }
 
     /// Fetch from cloud API with retry logic for transient errors
-    async fn fetch_from_api(&self, _auth: &AuthResponse) -> Result<WasmRuleEngine> {
+    async fn fetch_from_api(&self, _auth: &AuthResponse) -> Result<(WasmRuleEngine, String)> {
         let url = format!("{}/rules-bundle", self.ledger_url);
 
         let request = RulesBundleRequest {
@@ -416,7 +416,10 @@ impl RuleBundleFetcher {
     }
 
     /// Process a successful bundle response
-    async fn process_bundle_response(&self, response: reqwest::Response) -> Result<WasmRuleEngine> {
+    async fn process_bundle_response(
+        &self,
+        response: reqwest::Response,
+    ) -> Result<(WasmRuleEngine, String)> {
         let bundle: RulesBundleResponse = response.json().await?;
 
         trace!(version = %bundle.version, "Got rules bundle response");
@@ -486,7 +489,9 @@ impl RuleBundleFetcher {
             warn!(error = %e, "Failed to cache bundle");
         }
 
-        tokio::task::block_in_place(|| WasmRuleEngine::load(&wasm_bytes))
+        let version = bundle.version.clone();
+        let engine = tokio::task::block_in_place(|| WasmRuleEngine::load(&wasm_bytes))?;
+        Ok((engine, version))
     }
 
     /// Perform server-side analysis on files.
