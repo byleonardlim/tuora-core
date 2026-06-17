@@ -285,7 +285,10 @@ impl RuleBundleFetcher {
 
     /// Try to load a cached bundle from disk, validating content hash if provided.
     /// Returns Ok if cached bundle matches server's content hash (or if no hash to compare).
-    async fn try_load_cache_with_validation(&self, server_info: &ServerVersionInfo) -> Result<WasmRuleEngine> {
+    async fn try_load_cache_with_validation(
+        &self,
+        server_info: &ServerVersionInfo,
+    ) -> Result<WasmRuleEngine> {
         let version = &server_info.version;
 
         // If server provides content hash, validate it against cached hash
@@ -555,7 +558,12 @@ impl RuleBundleFetcher {
         // Cache to local disk (signature prepended so try_load_cache can re-verify)
         let content_hash = computed_hash;
         if let Err(e) = self
-            .cache_bundle(&bundle.version, &sig_bytes, &wasm_bytes, Some(&content_hash))
+            .cache_bundle(
+                &bundle.version,
+                &sig_bytes,
+                &wasm_bytes,
+                Some(&content_hash),
+            )
             .await
         {
             warn!(error = %e, "Failed to cache bundle");
