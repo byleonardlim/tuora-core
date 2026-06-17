@@ -88,6 +88,16 @@ pub struct EvalInput {
     pub framework: String,
 }
 
+/// Confidence level of a detected violation
+///
+/// `Confirmed` — a source-to-sink data-flow trace was established across the file set.
+/// `Heuristic` — pattern match only; no cross-file source tracing performed.
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+pub enum DetectionConfidence {
+    Confirmed,
+    Heuristic,
+}
+
 /// Violation returned from the WASM sandbox
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct WasmViolation {
@@ -100,6 +110,10 @@ pub struct WasmViolation {
     pub plain_message: String,
     pub remediation: String,
     pub plain_remediation: String,
+    /// Confidence level of this detection (Confirmed = cross-file traced, Heuristic = pattern-only)
+    pub confidence: DetectionConfidence,
+    /// Multi-framework threat citations e.g. ["CWE-338", "OWASP-API4", "ATLAS-AML.T0051"]
+    pub threat_refs: Vec<String>,
 }
 
 /// Severity levels used across the WASM boundary

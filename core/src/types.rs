@@ -49,6 +49,58 @@ pub enum OwaspCategory {
     Asi10, // Rogue Agents
 }
 
+/// Multi-framework threat reference taxonomy
+///
+/// Each rule can cite one or more frameworks so output can be mapped
+/// to whichever standard the downstream AI analysis layer speaks.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub enum ThreatRef {
+    /// OWASP Agentic Top 10 (2026) — e.g. ASI01
+    OwaspAgentic(OwaspCategory),
+    /// OWASP Web Top 10 (2021) — e.g. A03:2021
+    OwaspWeb(String),
+    /// OWASP API Security Top 10 — e.g. API4
+    OwaspApi(String),
+    /// CWE weakness identifier — e.g. CWE-338
+    Cwe(u32),
+    /// MITRE ATLAS tactic/technique — e.g. AML.T0051
+    MitreAtlas(String),
+    /// NIST AI RMF function — e.g. GOVERN.1, MEASURE.2.5
+    NistAiRmf(String),
+}
+
+impl ThreatRef {
+    /// Parse a string citation (from WASM boundary) back into a structured ThreatRef.
+    /// Accepts formats: "CWE-338", "ATLAS-AML.T0051", "OWASP-API4", "OWASP-A03", "ASI01", "NIST-GOVERN.1"
+    pub fn from_citation(s: &str) -> Option<Self> {
+        if let Some(rest) = s.strip_prefix("CWE-") {
+            return rest.parse().ok().map(ThreatRef::Cwe);
+        }
+        if let Some(rest) = s.strip_prefix("ATLAS-") {
+            return Some(ThreatRef::MitreAtlas(rest.to_string()));
+        }
+        if let Some(rest) = s.strip_prefix("OWASP-API") {
+            return Some(ThreatRef::OwaspApi(rest.to_string()));
+        }
+        if let Some(rest) = s.strip_prefix("OWASP-") {
+            return Some(ThreatRef::OwaspWeb(rest.to_string()));
+        }
+        if let Some(rest) = s.strip_prefix("NIST-") {
+            return Some(ThreatRef::NistAiRmf(rest.to_string()));
+        }
+        None
+    }
+}
+
+/// Detection confidence level — matches `DetectionConfidence` in the WASM ABI
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum DetectionConfidence {
+    /// Cross-file source-to-sink data-flow trace was established
+    Confirmed,
+    /// Pattern match only; no cross-file source tracing performed
+    Heuristic,
+}
+
 /// Rule category for organizing compliance checks
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum RuleCategory {
@@ -85,6 +137,10 @@ pub struct Violation {
     pub plain_message: String,
     /// Plain-English fix instruction for non-technical terminal output
     pub plain_remediation: String,
+    /// Detection confidence — Confirmed (cross-file traced) or Heuristic (pattern-only)
+    pub confidence: DetectionConfidence,
+    /// Multi-framework threat citations (CWE, MITRE ATLAS, OWASP API, NIST AI RMF)
+    pub threat_refs: Vec<ThreatRef>,
 }
 
 /// Framework types that Tuora can detect and analyze

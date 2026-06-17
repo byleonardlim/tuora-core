@@ -2,15 +2,36 @@
 
 use crate::commands::watch::ViolationDelta;
 use crate::config::OutputFormat;
-use crate::types::{RuleId, ScanResult, Severity, Violation};
+use crate::types::{
+    DetectionConfidence, Framework, RuleId, ScanResult, Severity, ThreatRef, Violation,
+};
 use anyhow::Result;
 use std::collections::HashMap;
 use std::io::{self, Write};
 use std::path::PathBuf;
 
+const RULE_COUNT_FULL: u32 = 28;
+const RULE_COUNT_SAST_ONLY: u32 = 22;
+
 /// Report renderer for scan results
 pub struct Reporter {
     format: OutputFormat,
+}
+
+/// Build the mode label string used in both ANSI and plain-text outputs.
+fn mode_label(framework: Framework) -> String {
+    if framework != Framework::Unknown {
+        format!(
+            "Agentic + SAST ({}) — {} rules active",
+            framework.name(),
+            RULE_COUNT_FULL
+        )
+    } else {
+        format!(
+            "Traditional SAST — {} rules active (AI-specific agentic checks N/A)",
+            RULE_COUNT_SAST_ONLY
+        )
+    }
 }
 
 /// Wrap text to specified width, breaking at word boundaries
@@ -152,24 +173,16 @@ impl Reporter {
         )?;
 
         // Mode banner
-        let (mode_label, mode_color) = if result.framework != crate::types::Framework::Unknown {
-            (
-                format!(
-                    "Agentic + SAST ({}) — 13 rules active",
-                    result.framework.name()
-                ),
-                "\x1b[36m",
-            )
+        let label = mode_label(result.framework);
+        let mode_color = if result.framework != Framework::Unknown {
+            "\x1b[36m"
         } else {
-            (
-                "Traditional SAST — 7 rules active (AI-specific checks N/A)".to_string(),
-                "\x1b[33m",
-            )
+            "\x1b[33m"
         };
         writeln!(
             stdout,
             "  \x1b[90mMode:\x1b[0m         {}{}\x1b[0m\n",
-            mode_color, mode_label
+            mode_color, label
         )?;
 
         // Health Score
@@ -267,14 +280,22 @@ impl Reporter {
 
         let severity_str = format!("{:?}", severity).to_uppercase();
 
-        // Rule header with ID, severity, and title
+        // Confidence badge
+        let (conf_badge, conf_color) = match first.confidence {
+            DetectionConfidence::Confirmed => ("CONFIRMED", "\x1b[32m"),
+            DetectionConfidence::Heuristic => ("HEURISTIC", "\x1b[90m"),
+        };
+
+        // Rule header with ID, severity, confidence, and title
         writeln!(
             stdout,
-            "{} {} {} [{}] \x1b[1m\x1b[97m {} \x1b[0m",
+            "{} {} {} [{}] {}[{}]\x1b[0m \x1b[1m\x1b[97m {} \x1b[0m",
             icon,
             rule_id.0,
             severity.ansi_color(),
             severity_str,
+            conf_color,
+            conf_badge,
             first.tool_target
         )?;
 
@@ -312,6 +333,42 @@ impl Reporter {
         }
         for line in fix_lines.iter().skip(1) {
             writeln!(stdout, "  \x1b[90m│\x1b[0m     {}", line)?;
+        }
+
+        // Threat framework citations (only shown when present)
+        if !first.threat_refs.is_empty() {
+            let citations: Vec<String> = first
+                .threat_refs
+                .iter()
+                .map(|r| match r {
+                    ThreatRef::OwaspAgentic(cat) => {
+                        use crate::types::OwaspCategory::*;
+                        let id = match cat {
+                            Asi01 => "01",
+                            Asi02 => "02",
+                            Asi03 => "03",
+                            Asi04 => "04",
+                            Asi05 => "05",
+                            Asi06 => "06",
+                            Asi07 => "07",
+                            Asi08 => "08",
+                            Asi09 => "09",
+                            Asi10 => "10",
+                        };
+                        format!("OWASP ASI{id}")
+                    }
+                    ThreatRef::OwaspWeb(s) => format!("OWASP {s}"),
+                    ThreatRef::OwaspApi(s) => format!("OWASP API{s}"),
+                    ThreatRef::Cwe(n) => format!("CWE-{n}"),
+                    ThreatRef::MitreAtlas(s) => format!("ATLAS {s}"),
+                    ThreatRef::NistAiRmf(s) => format!("NIST AI RMF {s}"),
+                })
+                .collect();
+            writeln!(
+                stdout,
+                "  \x1b[90m│  Refs: {}\x1b[0m",
+                citations.join(" · ")
+            )?;
         }
 
         writeln!(stdout)?;
@@ -413,15 +470,7 @@ impl Reporter {
         println!("Files Scanned: {}", result.files_scanned);
         println!("Rules Checked: {}", result.rules_evaluated);
         println!("Duration: {}ms", result.scan_duration_ms);
-        let mode_label = if result.framework != crate::types::Framework::Unknown {
-            format!(
-                "Agentic + SAST ({}) - 13 rules active",
-                result.framework.name()
-            )
-        } else {
-            "Traditional SAST - 7 rules active (AI-specific checks N/A)".to_string()
-        };
-        println!("Mode: {}", mode_label);
+        println!("Mode: {}", mode_label(result.framework));
         println!("Health Score: {}/100", result.health_score);
         println!();
 
@@ -458,6 +507,7 @@ mod tests {
     use std::path::PathBuf;
 
     fn create_test_violation(severity: Severity) -> Violation {
+        use crate::types::DetectionConfidence;
         Violation {
             rule_id: RuleId::new("TEST-01"),
             category: RuleCategory::Security,
@@ -470,6 +520,8 @@ mod tests {
             remediation: "Test fix".to_string(),
             plain_message: "Plain test message".to_string(),
             plain_remediation: "Plain test fix".to_string(),
+            confidence: DetectionConfidence::Heuristic,
+            threat_refs: vec![],
         }
     }
 

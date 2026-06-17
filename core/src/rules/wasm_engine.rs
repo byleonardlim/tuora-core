@@ -209,7 +209,7 @@ impl WasmRuleEngine {
         v: tuora_types::WasmViolation,
         _files: &[IngestedFile],
     ) -> Violation {
-        use crate::types::{OwaspCategory, RuleCategory, RuleId};
+        use crate::types::{DetectionConfidence, OwaspCategory, RuleCategory, RuleId, ThreatRef};
         use std::path::PathBuf;
 
         // Use file_path carried by the violation itself (set by the WASM engine per-file)
@@ -239,21 +239,47 @@ impl WasmRuleEngine {
             RuleCategory::Sast
         };
 
-        // Map to OWASP category
+        // Map rule ID to the closest OWASP Agentic Top 10 (2026) category.
+        // Every rule must appear here explicitly — the catch-all is intentionally Asi02
+        // (Tool Misuse) as a conservative fallback for genuinely unclassifiable rules.
         let owasp_ref = match v.rule_id.as_str() {
-            "BZ-SEC-01" => OwaspCategory::Asi02,
-            "BZ-SEC-02" | "BZ-SEC-02B" => OwaspCategory::Asi05,
-            "BZ-FIN-01" | "BZ-OPS-02" => OwaspCategory::Asi08,
-            "BZ-FIN-02" => OwaspCategory::Asi06,
-            "BZ-FIN-03" => OwaspCategory::Asi02,
-            "BZ-OPS-01" => OwaspCategory::Asi03,
-            "BZ-HYG-01" | "BZ-SAST-04" => OwaspCategory::Asi04,
-            "BZ-HYG-02" => OwaspCategory::Asi01,
-            "BZ-SAST-01" => OwaspCategory::Asi03,
-            "BZ-SAST-02" => OwaspCategory::Asi03,
-            "BZ-SAST-03" => OwaspCategory::Asi05,
-            _ => OwaspCategory::Asi02,
+            // Security — tool/code execution vectors
+            "BZ-SEC-01" => OwaspCategory::Asi02, // Tool Misuse
+            "BZ-SEC-02" | "BZ-SEC-02B" => OwaspCategory::Asi05, // Unexpected Code Execution
+            "BZ-SEC-03" => OwaspCategory::Asi05, // Unexpected Code Execution (weak entropy)
+            "BZ-SEC-04" => OwaspCategory::Asi05, // Unexpected Code Execution (unsafe deser)
+            "BZ-SEC-05" => OwaspCategory::Asi05, // Unexpected Code Execution (path traversal)
+            "BZ-SEC-06" => OwaspCategory::Asi03, // Identity & Privilege Abuse (JWT bypass)
+            // Financial / cost
+            "BZ-FIN-01" | "BZ-OPS-02" => OwaspCategory::Asi08, // Cascading Failures
+            "BZ-FIN-02" => OwaspCategory::Asi06,               // Memory & Context Poisoning
+            "BZ-FIN-03" => OwaspCategory::Asi02, // Tool Misuse (misconfigured LLM params)
+            // Operational
+            "BZ-OPS-01" => OwaspCategory::Asi03, // Identity & Privilege Abuse
+            "BZ-OPS-03" => OwaspCategory::Asi08, // Cascading Failures (unbounded LLM cost)
+            // Hygiene
+            "BZ-HYG-01" | "BZ-SAST-04" => OwaspCategory::Asi04, // Agentic Supply Chain
+            "BZ-HYG-02" => OwaspCategory::Asi01,                // Agent Goal Hijack (env bleed)
+            "BZ-HYG-04" => OwaspCategory::Asi01, // Agent Goal Hijack (XSS / prompt output)
+            // Inter-agent
+            "BZ-AGT-01" => OwaspCategory::Asi07, // Insecure Inter-Agent Communication
+            // Traditional SAST
+            "BZ-SAST-01" => OwaspCategory::Asi03, // Identity & Privilege Abuse
+            "BZ-SAST-02" => OwaspCategory::Asi03, // Identity & Privilege Abuse
+            "BZ-SAST-03" => OwaspCategory::Asi05, // Unexpected Code Execution (SQLi)
+            _ => OwaspCategory::Asi02,            // Conservative fallback
         };
+
+        let confidence = match v.confidence {
+            tuora_types::DetectionConfidence::Confirmed => DetectionConfidence::Confirmed,
+            tuora_types::DetectionConfidence::Heuristic => DetectionConfidence::Heuristic,
+        };
+
+        let threat_refs: Vec<ThreatRef> = v
+            .threat_refs
+            .iter()
+            .filter_map(|s| ThreatRef::from_citation(s))
+            .collect();
 
         Violation {
             rule_id: RuleId::new(&v.rule_id),
@@ -267,6 +293,8 @@ impl WasmRuleEngine {
             remediation: v.remediation,
             plain_message: v.plain_message,
             plain_remediation: v.plain_remediation,
+            confidence,
+            threat_refs,
         }
     }
 }
