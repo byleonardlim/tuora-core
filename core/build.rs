@@ -33,6 +33,9 @@ fn main() {
     // Re-run if rule-engine source changes
     println!("cargo::rerun-if-changed=../cloud/rules/rule-engine/src");
     println!("cargo::rerun-if-changed=../cloud/rules/rule-engine/Cargo.toml");
+    // Re-run if the shared wire-protocol types change (WASM ABI boundary)
+    println!("cargo::rerun-if-changed=../cloud/types/src/lib.rs");
+    println!("cargo::rerun-if-changed=../types/src/lib.rs");
 
     let version = read_cargo_version(&rule_engine_toml);
     let bundle_name = format!("def-{}.wasm", version);
@@ -41,11 +44,6 @@ fn main() {
     println!("cargo::rustc-env=RULE_ENGINE_VERSION={}", version);
 
     let dest = manifest_dir.join("dev").join(&bundle_name);
-
-    // Skip if already built (cargo will re-run on source changes via rerun-if-changed)
-    if dest.exists() {
-        return;
-    }
 
     eprintln!("build.rs: Building rule-engine WASM...");
 
