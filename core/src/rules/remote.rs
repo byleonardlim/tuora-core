@@ -90,6 +90,7 @@ struct BundleVersionResponse {
 
 /// Server version info including content hash for cache validation
 #[derive(Debug)]
+#[allow(dead_code)]
 struct ServerVersionInfo {
     version: String,
     content_hash: Option<String>,
