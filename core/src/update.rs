@@ -6,7 +6,7 @@
 use serde::Deserialize;
 use tracing::debug;
 
-const GITHUB_API_URL: &str = "https://api.github.com/repos/byleonardlim/tuora-core/releases/latest";
+const GITHUB_API_URL: &str = "https://api.github.com/repos/byleonardlim/tuora-core/releases?per_page=1";
 
 #[derive(Deserialize)]
 struct GithubRelease {
@@ -59,7 +59,7 @@ async fn fetch_latest_tag() -> anyhow::Result<String> {
         .timeout(std::time::Duration::from_secs(4))
         .build()?;
 
-    let release: GithubRelease = client
+    let releases: Vec<GithubRelease> = client
         .get(GITHUB_API_URL)
         .send()
         .await?
@@ -67,7 +67,11 @@ async fn fetch_latest_tag() -> anyhow::Result<String> {
         .json()
         .await?;
 
-    let tag = release.tag_name.trim_start_matches('v').to_string();
+    let tag = releases
+        .into_iter()
+        .next()
+        .map(|r| r.tag_name.trim_start_matches('v').to_string())
+        .ok_or_else(|| anyhow::anyhow!("No releases found"))?;
     Ok(tag)
 }
 

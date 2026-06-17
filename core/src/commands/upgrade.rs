@@ -126,8 +126,11 @@ fn build_client() -> Result<reqwest::Client> {
 }
 
 async fn fetch_latest_tag(client: &reqwest::Client) -> Result<String> {
-    let url = format!("https://api.github.com/repos/{}/releases/latest", REPO);
-    let release: GithubRelease = client
+    let url = format!(
+        "https://api.github.com/repos/{}/releases?per_page=1",
+        REPO
+    );
+    let releases: Vec<GithubRelease> = client
         .get(&url)
         .send()
         .await
@@ -137,7 +140,12 @@ async fn fetch_latest_tag(client: &reqwest::Client) -> Result<String> {
         .json()
         .await
         .context("Failed to parse GitHub API response")?;
-    Ok(release.tag_name)
+
+    releases
+        .into_iter()
+        .next()
+        .map(|r| r.tag_name)
+        .context("No releases found on GitHub")
 }
 
 /// Returns the platform suffix used in GitHub release asset names.
