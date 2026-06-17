@@ -126,10 +126,7 @@ fn build_client() -> Result<reqwest::Client> {
 }
 
 async fn fetch_latest_tag(client: &reqwest::Client) -> Result<String> {
-    let url = format!(
-        "https://api.github.com/repos/{}/releases?per_page=1",
-        REPO
-    );
+    let url = format!("https://api.github.com/repos/{}/releases?per_page=1", REPO);
     let releases: Vec<GithubRelease> = client
         .get(&url)
         .send()

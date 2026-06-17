@@ -6,7 +6,8 @@
 use serde::Deserialize;
 use tracing::debug;
 
-const GITHUB_API_URL: &str = "https://api.github.com/repos/byleonardlim/tuora-core/releases?per_page=1";
+const GITHUB_API_URL: &str =
+    "https://api.github.com/repos/byleonardlim/tuora-core/releases?per_page=1";
 
 #[derive(Deserialize)]
 struct GithubRelease {
