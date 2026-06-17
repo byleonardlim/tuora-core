@@ -8,6 +8,7 @@ use crate::types::AuthResponse;
 use anyhow::{Context, Result, bail};
 use base64::Engine;
 use serde::{Deserialize, Serialize};
+use sha2::{Digest, Sha256};
 use std::path::PathBuf;
 use tokio::fs;
 use tracing::{debug, info, trace, warn};
@@ -35,6 +36,8 @@ pub struct RulesBundleResponse {
     pub version: String,
     /// Expiration timestamp (Unix seconds)
     pub expires_at: u64,
+    /// Content hash (SHA256) for cache validation
+    pub content_hash: Option<String>,
 }
 
 /// Request to rules bundle API
@@ -81,6 +84,16 @@ pub struct AnalyzeMeta {
 #[derive(Debug, Deserialize)]
 struct BundleVersionResponse {
     version: String,
+    content_hash: Option<String>,
+    released_at: Option<String>,
+}
+
+/// Server version info including content hash for cache validation
+#[derive(Debug)]
+struct ServerVersionInfo {
+    version: String,
+    content_hash: Option<String>,
+    released_at: Option<String>,
 }
 
 /// Rule bundle fetcher
@@ -166,18 +179,25 @@ impl RuleBundleFetcher {
     }
 
     /// Cache-aware fetch: version check → cache hit → download fallback.
+    /// Uses content_hash to detect when same version has new content (cache invalidation).
     #[cfg_attr(debug_assertions, allow(dead_code))]
     async fn fetch_with_cache(&self, auth: &AuthResponse) -> Result<(WasmRuleEngine, String)> {
         match self.check_server_version().await {
-            Ok(server_version) => {
-                debug!(version = %server_version, "Server bundle version");
-                match self.try_load_cache(&server_version).await {
+            Ok(server_info) => {
+                debug!(
+                    version = %server_info.version,
+                    content_hash = ?server_info.content_hash,
+                    "Server bundle version"
+                );
+
+                // Check if cached bundle matches server's content hash
+                match self.try_load_cache_with_validation(&server_info).await {
                     Ok(engine) => {
-                        info!(version = %server_version, "Loaded rules from disk cache");
-                        return Ok((engine, server_version));
+                        info!(version = %server_info.version, "Loaded rules from disk cache");
+                        return Ok((engine, server_info.version));
                     }
                     Err(e) => {
-                        debug!(error = %e, "Cache miss, downloading bundle");
+                        debug!(error = %e, "Cache miss or content hash mismatch, downloading bundle");
                     }
                 }
                 self.fetch_from_api(auth).await
@@ -189,9 +209,9 @@ impl RuleBundleFetcher {
         }
     }
 
-    /// GET /v1/bundle-version — cheap call to retrieve the current version string.
+    /// GET /v1/bundle-version — cheap call to retrieve the current version and content hash.
     /// Includes retry logic for transient failures.
-    async fn check_server_version(&self) -> Result<String> {
+    async fn check_server_version(&self) -> Result<ServerVersionInfo> {
         let url = format!("{}/bundle-version", self.ledger_url);
 
         let mut last_error = None;
@@ -218,7 +238,11 @@ impl RuleBundleFetcher {
                     let status = response.status();
                     if status.is_success() {
                         let parsed: BundleVersionResponse = response.json().await?;
-                        return Ok(parsed.version);
+                        return Ok(ServerVersionInfo {
+                            version: parsed.version,
+                            content_hash: parsed.content_hash,
+                            released_at: parsed.released_at,
+                        });
                     }
 
                     let body = response.text().await.unwrap_or_default();
@@ -256,6 +280,34 @@ impl RuleBundleFetcher {
             MAX_RETRIES,
             last_error.unwrap_or_else(|| "Unknown error".to_string())
         );
+    }
+
+    /// Try to load a cached bundle from disk, validating content hash if provided.
+    /// Returns Ok if cached bundle matches server's content hash (or if no hash to compare).
+    async fn try_load_cache_with_validation(&self, server_info: &ServerVersionInfo) -> Result<WasmRuleEngine> {
+        let version = &server_info.version;
+
+        // If server provides content hash, validate it against cached hash
+        if let Some(ref expected_hash) = server_info.content_hash {
+            let hash_path = self.cache_hash_path(version)?;
+            if hash_path.exists() {
+                let cached_hash = fs::read_to_string(&hash_path).await?;
+                let cached_hash = cached_hash.trim();
+                if cached_hash != expected_hash {
+                    bail!(
+                        "Content hash mismatch: cached {} vs server {}. Cache invalidated.",
+                        cached_hash,
+                        expected_hash
+                    );
+                }
+                debug!(hash = %expected_hash, "Content hash validated");
+            } else {
+                bail!("No content hash file found, treating as cache miss");
+            }
+        }
+
+        // Hash matches (or no hash to check), load the cached bundle
+        self.try_load_cache(version).await
     }
 
     /// Try to load a cached bundle from disk for the given version.
@@ -481,9 +533,28 @@ impl RuleBundleFetcher {
             debug!("WASM signature verified");
         }
 
+        // Verify server-provided content hash against actual downloaded bytes
+        let computed_hash = {
+            let mut hasher = Sha256::new();
+            hasher.update(&wasm_bytes);
+            format!("{:x}", hasher.finalize())
+        };
+
+        if let Some(ref server_hash) = bundle.content_hash {
+            if server_hash != &computed_hash {
+                bail!(
+                    "Content hash mismatch: server claims {} but computed {} from downloaded bytes",
+                    server_hash,
+                    computed_hash
+                );
+            }
+            debug!(hash = %computed_hash, "Server content hash verified");
+        }
+
         // Cache to local disk (signature prepended so try_load_cache can re-verify)
+        let content_hash = computed_hash;
         if let Err(e) = self
-            .cache_bundle(&bundle.version, &sig_bytes, &wasm_bytes)
+            .cache_bundle(&bundle.version, &sig_bytes, &wasm_bytes, Some(&content_hash))
             .await
         {
             warn!(error = %e, "Failed to cache bundle");
@@ -547,8 +618,15 @@ impl RuleBundleFetcher {
     }
 
     /// Cache bundle to disk, storing [64-byte Ed25519 sig][wasm] before encryption.
+    /// Also stores content hash in a separate .hash file for cache invalidation.
     #[cfg_attr(debug_assertions, allow(unused_variables))]
-    async fn cache_bundle(&self, version: &str, sig_bytes: &[u8], wasm_bytes: &[u8]) -> Result<()> {
+    async fn cache_bundle(
+        &self,
+        version: &str,
+        sig_bytes: &[u8],
+        wasm_bytes: &[u8],
+        content_hash: Option<&str>,
+    ) -> Result<()> {
         let cache_path = self.cache_path(version)?;
 
         if let Some(parent) = cache_path.parent() {
@@ -570,8 +648,24 @@ impl RuleBundleFetcher {
             fs::write(&cache_path, wasm_bytes).await?;
         }
 
+        // Store content hash for cache invalidation
+        if let Some(hash) = content_hash {
+            let hash_path = self.cache_hash_path(version)?;
+            fs::write(&hash_path, hash).await?;
+            debug!(path = %hash_path.display(), hash = %hash, "Cached content hash");
+        }
+
         debug!(path = %cache_path.display(), "Cached rules bundle");
         Ok(())
+    }
+
+    /// Returns the path for a versioned content hash file: ~/.cache/tuora/def-<version>.wasm.hash
+    fn cache_hash_path(&self, version: &str) -> Result<PathBuf> {
+        let path = dirs::cache_dir()
+            .ok_or_else(|| anyhow::anyhow!("No cache directory available"))?
+            .join("tuora")
+            .join(format!("def-{}.wasm.hash", version));
+        Ok(path)
     }
 
     /// Returns the path for a versioned cached bundle: ~/.cache/tuora/def-<version>.wasm

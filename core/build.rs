@@ -30,11 +30,8 @@ fn main() {
         return;
     }
 
-    // Re-run if rule-engine source changes
-    println!("cargo::rerun-if-changed=../cloud/rules/rule-engine/src");
-    println!("cargo::rerun-if-changed=../cloud/rules/rule-engine/Cargo.toml");
+    // Re-run if rule-engine source changes (cloud/ paths removed - tracked in separate repo)
     // Re-run if the shared wire-protocol types change (WASM ABI boundary)
-    println!("cargo::rerun-if-changed=../cloud/types/src/lib.rs");
     println!("cargo::rerun-if-changed=../types/src/lib.rs");
 
     let version = read_cargo_version(&rule_engine_toml);
