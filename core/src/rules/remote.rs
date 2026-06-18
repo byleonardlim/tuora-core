@@ -179,8 +179,9 @@ impl RuleBundleFetcher {
         self.fetch_with_cache(auth).await
     }
 
-    /// Cache-aware fetch: version check → cache hit → download fallback.
+    /// Cache-aware fetch: version check → cache hit → download fallback → any cache fallback.
     /// Uses content_hash to detect when same version has new content (cache invalidation).
+    /// Falls back to any cached bundle if API is completely unavailable.
     #[cfg_attr(debug_assertions, allow(dead_code))]
     async fn fetch_with_cache(&self, auth: &AuthResponse) -> Result<(WasmRuleEngine, String)> {
         match self.check_server_version().await {
@@ -203,9 +204,26 @@ impl RuleBundleFetcher {
                 }
                 self.fetch_from_api(auth).await
             }
-            Err(e) => {
-                warn!(error = %e, "Version check failed, downloading bundle directly");
-                self.fetch_from_api(auth).await
+            Err(version_err) => {
+                warn!(error = %version_err, "Version check failed, trying direct download");
+                match self.fetch_from_api(auth).await {
+                    Ok(result) => Ok(result),
+                    Err(api_err) => {
+                        warn!(error = %api_err, "API fetch failed, attempting to load any cached bundle");
+                        match self.try_load_any_cache().await {
+                            Ok(result) => Ok(result),
+                            Err(cache_err) => {
+                                bail!(
+                                    "Failed to fetch rules bundle and no usable cache available.\n\
+                                     API error: {}\n\
+                                     Cache error: {}",
+                                    api_err,
+                                    cache_err
+                                );
+                            }
+                        }
+                    }
+                }
             }
         }
     }
@@ -380,6 +398,59 @@ impl RuleBundleFetcher {
         // In dev mode, skip signature verification.
         // block_in_place: wasmtime JIT (CLIF) is synchronous and CPU-heavy.
         tokio::task::block_in_place(|| WasmRuleEngine::load(&wasm_bytes))
+    }
+
+    /// Try to load any cached bundle from disk when API is unavailable.
+    /// Scans the cache directory for any rule-engine bundle and loads the most recent one.
+    async fn try_load_any_cache(&self) -> Result<(WasmRuleEngine, String)> {
+        let cache_dir = dirs::cache_dir()
+            .ok_or_else(|| anyhow::anyhow!("No cache directory available"))?
+            .join("tuora");
+
+        if !cache_dir.exists() {
+            bail!("No cache directory found at {}", cache_dir.display());
+        }
+
+        // Find all rule-engine-*.wasm files in cache
+        let mut entries = fs::read_dir(&cache_dir).await?;
+        let mut bundles = Vec::new();
+
+        while let Some(entry) = entries.next_entry().await? {
+            let path = entry.path();
+            let filename = path.file_name().and_then(|n| n.to_str()).unwrap_or("");
+
+            if filename.starts_with("rule-engine-v") && filename.ends_with(".wasm") {
+                // Extract version from filename: rule-engine-v{version}.wasm
+                let version = filename
+                    .strip_prefix("rule-engine-v")
+                    .and_then(|s| s.strip_suffix(".wasm"))
+                    .unwrap_or("unknown")
+                    .to_string();
+
+                let metadata = entry.metadata().await?;
+                let modified = metadata.modified()?;
+                bundles.push((path, version, modified));
+            }
+        }
+
+        // Sort by modification time (most recent first)
+        bundles.sort_by(|a, b| b.2.cmp(&a.2));
+
+        for (path, version, _) in bundles {
+            debug!(path = %path.display(), version = %version, "Attempting to load cached bundle");
+            match self.try_load_cache(&version).await {
+                Ok(engine) => {
+                    warn!(version = %version, "Using cached rules bundle (API unavailable). Rules may be outdated.");
+                    return Ok((engine, version));
+                }
+                Err(e) => {
+                    debug!(error = %e, path = %path.display(), "Failed to load cached bundle");
+                    continue;
+                }
+            }
+        }
+
+        bail!("No usable cached bundles found in {}", cache_dir.display())
     }
 
     /// Path to dev WASM file (e.g. `dev/rule-engine-v0.1.0.wasm`)
