@@ -31,20 +31,48 @@ const FALLBACK_DIR_SIZE_THRESHOLD: usize = 1000;
 
 /// Directories to always skip when no .gitignore exists (common large directories).
 const ALWAYS_SKIP_DIRS: &[&str] = &[
+    // JS/TS package and framework artifacts
     "node_modules",
-    ".git",
-    "target",
-    "__pycache__",
     ".pnpm",
     ".next",
+    ".nuxt",
+    ".svelte-kit",
+    ".astro",
+    ".turbo",
+    ".nx",
+    ".parcel-cache",
+    ".webpack",
+    "storybook-static",
+    ".docusaurus",
+    // Generic compiled / bundled output
     "dist",
     "build",
     "out",
+    "lib",
+    "bin",
+    "obj",
+    // Test and coverage artifacts
     "coverage",
-    ".turbo",
-    ".parcel-cache",
+    ".nyc_output",
+    // Python compiled and tool caches
+    "__pycache__",
+    ".pytest_cache",
+    ".mypy_cache",
+    ".ruff_cache",
+    ".tox",
+    "venv",
+    ".venv",
+    // Rust / Go / other compiled output
+    "target",
+    "vendor",
+    "_build",
+    // Java / .NET build caches
+    ".gradle",
+    ".m2",
+    // VCS
+    ".git",
+    // Generic caches
     ".cache",
-    ".svelte-kit",
 ];
 
 /// Holds the mutable state of the workspace between change events.

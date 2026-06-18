@@ -35,8 +35,8 @@ async fn main() {
     // Display banner immediately
     print_banner();
 
-    // Kick off update check in the background — never blocks startup
-    let update_handle = update::spawn_check();
+    // Kick off update check in the background — prints immediately when an update is found
+    update::spawn_check();
 
     // Initialize logging (only for debug output, not user-facing)
     if let Err(e) = init_logging() {
@@ -82,8 +82,6 @@ async fn main() {
             print_help();
         }
     }
-
-    update::print_if_outdated(update_handle).await;
 }
 
 /// Initialize tracing subscriber

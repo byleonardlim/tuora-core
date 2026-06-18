@@ -1,7 +1,7 @@
 //! Non-blocking update checker — queries GitHub Releases for a newer version.
 //!
-//! Spawned as a background task immediately after startup. The result is awaited
-//! after the main command finishes, so it never delays execution.
+//! Spawned as a background task immediately after startup. Prints the update
+//! notice immediately when a newer version is found, without blocking execution.
 
 use serde::Deserialize;
 use tracing::debug;
@@ -15,43 +15,27 @@ struct GithubRelease {
 }
 
 /// Spawn a background task that checks for a newer release on GitHub.
-/// Returns a `JoinHandle` — await it after your command completes to print
-/// any update notice without blocking startup.
-pub fn spawn_check() -> tokio::task::JoinHandle<Option<String>> {
+/// The update notice is printed immediately from the background task when
+/// a newer version is found, so it appears during command execution.
+pub fn spawn_check() {
     tokio::spawn(async {
-        match fetch_latest_tag().await {
-            Ok(latest) => {
+        match tokio::time::timeout(std::time::Duration::from_secs(5), fetch_latest_tag()).await {
+            Ok(Ok(latest)) => {
                 let current = env!("CARGO_PKG_VERSION");
                 if is_newer(&latest, current) {
-                    Some(latest)
-                } else {
-                    None
+                    eprintln!(
+                        "\n  \x1b[33m⬆  Update available:\x1b[0m \x1b[2mv{}\x1b[0m → \x1b[1mv{}\x1b[0m",
+                        current, latest
+                    );
+                    eprintln!(
+                        "  Run \x1b[36mtuora upgrade\x1b[0m to install the latest version.\n"
+                    );
                 }
             }
-            Err(e) => {
-                debug!("Update check failed: {}", e);
-                None
-            }
+            Ok(Err(e)) => debug!("Update check failed: {}", e),
+            Err(_) => debug!("Update check timed out"),
         }
-    })
-}
-
-/// Print the update notice if `handle` resolved to a newer version tag.
-/// Call this after your command has finished so it appears as a trailing notice.
-pub async fn print_if_outdated(handle: tokio::task::JoinHandle<Option<String>>) {
-    match tokio::time::timeout(std::time::Duration::from_secs(5), handle).await {
-        Ok(Ok(Some(latest))) => {
-            let current = env!("CARGO_PKG_VERSION");
-            eprintln!(
-                "\n  \x1b[33m⬆  Update available:\x1b[0m \x1b[2mv{}\x1b[0m → \x1b[1mv{}\x1b[0m",
-                current, latest
-            );
-            eprintln!("  Run \x1b[36mtuora upgrade\x1b[0m to install the latest version.\n");
-        }
-        Ok(Ok(None)) => {}
-        Ok(Err(e)) => debug!("Update check task panicked: {}", e),
-        Err(_) => debug!("Update check timed out"),
-    }
+    });
 }
 
 async fn fetch_latest_tag() -> anyhow::Result<String> {
