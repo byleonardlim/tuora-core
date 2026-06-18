@@ -117,13 +117,25 @@ impl Scanner {
             let path = entry.path();
 
             if path.is_dir() {
-                // Skip common non-source directories
+                // Skip common non-source and output directories
                 if let Some(name) = path.file_name() {
                     let name = name.to_string_lossy();
                     if name.starts_with('.')
                         || name == "node_modules"
                         || name == "__pycache__"
                         || name == "target"
+                        || name == "build"
+                        || name == "dist"
+                        || name == "out"
+                        || name == ".svelte-kit"
+                        || name == ".next"
+                        || name == ".nuxt"
+                        || name == ".turbo"
+                        || name == "storybook-static"
+                        || name == ".docusaurus"
+                        || name == "coverage"
+                        || name == "venv"
+                        || name == ".venv"
                     {
                         debug!("Skipping directory: {}", path.display());
                         continue;
