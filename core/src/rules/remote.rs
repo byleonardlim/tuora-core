@@ -434,7 +434,7 @@ impl RuleBundleFetcher {
         }
 
         // Sort by modification time (most recent first)
-        bundles.sort_by(|a, b| b.2.cmp(&a.2));
+        bundles.sort_by_key(|b| std::cmp::Reverse(b.2));
 
         for (path, version, _) in bundles {
             debug!(path = %path.display(), version = %version, "Attempting to load cached bundle");
