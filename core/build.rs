@@ -35,7 +35,7 @@ fn main() {
     println!("cargo::rerun-if-changed=../types/src/lib.rs");
 
     let version = read_cargo_version(&rule_engine_toml);
-    let bundle_name = format!("def-{}.wasm", version);
+    let bundle_name = format!("rule-engine-v{}.wasm", version);
 
     // Expose version to the CLI crate so remote.rs can find the file
     println!("cargo::rustc-env=RULE_ENGINE_VERSION={}", version);

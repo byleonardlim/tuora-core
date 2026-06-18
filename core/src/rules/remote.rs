@@ -382,10 +382,10 @@ impl RuleBundleFetcher {
         tokio::task::block_in_place(|| WasmRuleEngine::load(&wasm_bytes))
     }
 
-    /// Path to dev WASM file (e.g. `dev/def-0.1.0.wasm`)
+    /// Path to dev WASM file (e.g. `dev/rule-engine-v0.1.0.wasm`)
     #[cfg(debug_assertions)]
     fn dev_wasm_path(&self) -> PathBuf {
-        let filename = format!("def-{}.wasm", env!("RULE_ENGINE_VERSION"));
+        let filename = format!("rule-engine-v{}.wasm", env!("RULE_ENGINE_VERSION"));
         PathBuf::from(env!("CARGO_MANIFEST_DIR"))
             .join("dev")
             .join(filename)
@@ -668,21 +668,21 @@ impl RuleBundleFetcher {
         Ok(())
     }
 
-    /// Returns the path for a versioned content hash file: ~/.cache/tuora/def-<version>.wasm.hash
+    /// Returns the path for a versioned content hash file: ~/.cache/tuora/rule-engine-v<version>.wasm.hash
     fn cache_hash_path(&self, version: &str) -> Result<PathBuf> {
         let path = dirs::cache_dir()
             .ok_or_else(|| anyhow::anyhow!("No cache directory available"))?
             .join("tuora")
-            .join(format!("def-{}.wasm.hash", version));
+            .join(format!("rule-engine-v{}.wasm.hash", version));
         Ok(path)
     }
 
-    /// Returns the path for a versioned cached bundle: ~/.cache/tuora/def-<version>.wasm
+    /// Returns the path for a versioned cached bundle: ~/.cache/tuora/rule-engine-v<version>.wasm
     fn cache_path(&self, version: &str) -> Result<PathBuf> {
         let path = dirs::cache_dir()
             .ok_or_else(|| anyhow::anyhow!("No cache directory available"))?
             .join("tuora")
-            .join(format!("def-{}.wasm", version));
+            .join(format!("rule-engine-v{}.wasm", version));
         Ok(path)
     }
 }
