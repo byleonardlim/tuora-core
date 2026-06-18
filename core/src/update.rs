@@ -3,6 +3,7 @@
 //! Spawned as a background task immediately after startup. Prints the update
 //! notice immediately when a newer version is found, without blocking execution.
 
+use crate::paint;
 use serde::Deserialize;
 use tracing::debug;
 
@@ -24,11 +25,14 @@ pub fn spawn_check() {
                 let current = env!("CARGO_PKG_VERSION");
                 if is_newer(&latest, current) {
                     eprintln!(
-                        "\n  \x1b[33m⬆  Update available:\x1b[0m \x1b[2mv{}\x1b[0m → \x1b[1mv{}\x1b[0m",
-                        current, latest
+                        "\n  {} {} → {}",
+                        paint::warn_err("⬆  Update available:"),
+                        paint::dim_err(&format!("v{}", current)),
+                        paint::bold_err(&format!("v{}", latest))
                     );
                     eprintln!(
-                        "  Run \x1b[36mtuora upgrade\x1b[0m to install the latest version.\n"
+                        "  Run {} to install the latest version.\n",
+                        paint::accent_err("tuora upgrade")
                     );
                 }
             }

@@ -2,7 +2,7 @@
 
 use crate::types::Framework;
 use anyhow::{Context, Result};
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::fs;
 use std::path::{Path, PathBuf};
 use tracing::{debug, warn};
@@ -12,13 +12,18 @@ const SCAN_EXTENSIONS: &[&str] = &[
     "py", "ts", "js", "tsx", "yaml", "yml", "json", "svelte", "rs",
 ];
 
-/// Framework detection patterns — matched as substrings against lowercased file content
+/// Framework detection patterns — matched as substrings against lowercased file content.
+/// All patterns are anchored to import/from syntax to avoid false positives.
 const FRAMEWORK_PATTERNS: &[(&str, Framework)] = &[
-    // Python agentic frameworks
-    ("crewai", Framework::CrewAI),
-    ("langgraph", Framework::LangGraph),
-    ("langchain", Framework::LangChain),
-    ("autogen", Framework::AutoGen),
+    // Python agentic frameworks — require actual import statements
+    ("import crewai", Framework::CrewAI),
+    ("from crewai", Framework::CrewAI),
+    ("import langgraph", Framework::LangGraph),
+    ("from langgraph", Framework::LangGraph),
+    ("import langchain", Framework::LangChain),
+    ("from langchain", Framework::LangChain),
+    ("import autogen", Framework::AutoGen),
+    ("from autogen", Framework::AutoGen),
     // TypeScript / JavaScript agentic frameworks (import strings)
     ("@openai/agents", Framework::OpenAIAgentsJS),
     ("@mastra/core", Framework::Mastra),
@@ -27,8 +32,10 @@ const FRAMEWORK_PATTERNS: &[(&str, Framework)] = &[
     ("@langchain/", Framework::LangChain),
     ("from \"ai\"", Framework::VercelAI),
     ("from 'ai'", Framework::VercelAI),
-    // Standard AI SDKs (Python + JS/TS)
-    ("openai", Framework::OpenAI),
+    // Standard AI SDKs — Python import forms
+    ("import openai", Framework::OpenAI),
+    ("from openai import", Framework::OpenAI),
+    // Standard AI SDKs — JS/TS import forms
     ("from \"openai\"", Framework::OpenAI),
     ("from 'openai'", Framework::OpenAI),
 ];
@@ -255,17 +262,28 @@ impl Scanner {
             }
         }
 
-        // Check import strings in source files
+        // Check import strings in source files — accumulate votes, require ≥2 distinct files
+        let mut votes: HashMap<Framework, usize> = HashMap::new();
         for file in files {
+            let mut file_vote: Option<Framework> = None;
             for (pattern, framework) in FRAMEWORK_PATTERNS {
                 if file.content.contains(pattern) {
-                    debug!(file = %file.path.display(), "Detected framework via import: {}", framework.name());
-                    return *framework;
+                    file_vote = Some(*framework);
+                    break;
                 }
+            }
+            if let Some(fw) = file_vote {
+                debug!(file = %file.path.display(), "Vote for framework: {}", fw.name());
+                *votes.entry(fw).or_insert(0) += 1;
             }
         }
 
-        Framework::Unknown
+        votes
+            .into_iter()
+            .filter(|(_, count)| *count >= 2)
+            .max_by_key(|(_, count)| *count)
+            .map(|(fw, _)| fw)
+            .unwrap_or(Framework::Unknown)
     }
 }
 
@@ -278,44 +296,57 @@ mod tests {
     #[test]
     fn test_scanner_finds_python_files() {
         let temp = TempDir::new().unwrap();
-        let file_path = temp.path().join("test.py");
-        let mut file = fs::File::create(&file_path).unwrap();
+        for name in &["agent.py", "tasks.py"] {
+            let mut file = fs::File::create(temp.path().join(name)).unwrap();
+            writeln!(file, "import crewai").unwrap();
+        }
+
+        let scanner = Scanner::new(temp.path());
+        let snapshot = scanner.scan().unwrap();
+
+        assert_eq!(snapshot.files.len(), 2);
+        assert_eq!(snapshot.detected_framework, Framework::CrewAI);
+    }
+
+    #[test]
+    fn test_single_file_match_is_unknown() {
+        let temp = TempDir::new().unwrap();
+        let mut file = fs::File::create(temp.path().join("agent.py")).unwrap();
         writeln!(file, "import crewai").unwrap();
 
         let scanner = Scanner::new(temp.path());
         let snapshot = scanner.scan().unwrap();
 
-        assert_eq!(snapshot.files.len(), 1);
-        assert_eq!(snapshot.detected_framework, Framework::CrewAI);
+        assert_eq!(snapshot.detected_framework, Framework::Unknown);
     }
 
     #[test]
     fn test_scanner_detects_openai_sdk_python() {
         let temp = TempDir::new().unwrap();
-        let file_path = temp.path().join("openai_app.py");
-        let mut file = fs::File::create(&file_path).unwrap();
-        writeln!(file, "from openai import OpenAI").unwrap();
-        writeln!(file, "client = OpenAI()").unwrap();
+        for name in &["client.py", "utils.py"] {
+            let mut file = fs::File::create(temp.path().join(name)).unwrap();
+            writeln!(file, "from openai import OpenAI").unwrap();
+            writeln!(file, "client = OpenAI()").unwrap();
+        }
 
         let scanner = Scanner::new(temp.path());
         let snapshot = scanner.scan().unwrap();
 
-        assert_eq!(snapshot.files.len(), 1);
         assert_eq!(snapshot.detected_framework, Framework::OpenAI);
     }
 
     #[test]
     fn test_scanner_detects_openai_sdk_js() {
         let temp = TempDir::new().unwrap();
-        let file_path = temp.path().join("openai_app.ts");
-        let mut file = fs::File::create(&file_path).unwrap();
-        writeln!(file, "import OpenAI from 'openai';").unwrap();
-        writeln!(file, "const client = new OpenAI();").unwrap();
+        for name in &["client.ts", "utils.ts"] {
+            let mut file = fs::File::create(temp.path().join(name)).unwrap();
+            writeln!(file, "import OpenAI from 'openai';").unwrap();
+            writeln!(file, "const client = new OpenAI();").unwrap();
+        }
 
         let scanner = Scanner::new(temp.path());
         let snapshot = scanner.scan().unwrap();
 
-        assert_eq!(snapshot.files.len(), 1);
         assert_eq!(snapshot.detected_framework, Framework::OpenAI);
     }
 

@@ -1,5 +1,6 @@
 //! Animated progress indicator for scan stages
 
+use crate::paint;
 use std::io::{self, Write};
 use std::time::Duration;
 use tokio::time::sleep;
@@ -25,11 +26,7 @@ impl Progress {
         let mut i = 0;
 
         // Print initial state
-        let _ = write!(
-            stdout,
-            "\r\x1b[2K  {}\x1b[90mtuora\x1b[0m {}...",
-            spinner_chars[0], message
-        );
+        let _ = write!(stdout, "\r\x1b[2K  {}{}...", paint::dim("tuora "), message);
         let _ = stdout.flush();
 
         // Spawn the actual work
@@ -46,8 +43,10 @@ impl Progress {
                     // Clear the spinner line and print success
                     let _ = write!(
                         stdout,
-                        "\r\x1b[2K  \x1b[90mtuora\x1b[0m {}... \x1b[32m✓\x1b[0m{}{}\n",
+                        "\r\x1b[2K  {}{}... {}{}{}\n",
+                        paint::dim("tuora "),
                         message,
+                        paint::success("✓"),
                         if detail.is_empty() { "" } else { " " },
                         detail,
                     );
@@ -58,8 +57,9 @@ impl Progress {
                     i = (i + 1) % spinner_chars.len();
                     let _ = write!(
                         stdout,
-                        "\r\x1b[2K  {}\x1b[90mtuora\x1b[0m {}...",
+                        "\r\x1b[2K  {}{}{}...",
                         spinner_chars[i],
+                        paint::dim(" tuora "),
                         message
                     );
                     let _ = stdout.flush();
@@ -71,6 +71,6 @@ impl Progress {
     /// Print a simple status line (non-animated)
     pub fn status(message: &str) {
         let message = to_single_line(message);
-        println!("  \x1b[90mtuora\x1b[0m {}", message);
+        println!("  {}{}", paint::dim("tuora "), message);
     }
 }

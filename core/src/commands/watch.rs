@@ -6,6 +6,7 @@
 
 use crate::auth::AuthClient;
 use crate::config::ScanConfig;
+use crate::paint;
 use crate::progress::Progress;
 use crate::reporter::Reporter;
 use crate::rules::{RuleBackend, remote::RuleBundleFetcher};
@@ -23,8 +24,9 @@ use std::time::{Duration, Instant};
 use tracing::{debug, info, warn};
 use uuid::Uuid;
 
-/// Debounce window — collapses rapid editor save bursts into one evaluation.
-const DEBOUNCE_MS: u64 = 200;
+/// Debounce window — must exceed the PollWatcher interval (500ms) so all events
+/// from atomic editor saves (write-then-rename) are collected before evaluation.
+const DEBOUNCE_MS: u64 = 800;
 
 /// Threshold for skipping a directory when no .gitignore exists (too many entries).
 const FALLBACK_DIR_SIZE_THRESHOLD: usize = 1000;
@@ -129,8 +131,9 @@ pub async fn run(cfg: ScanConfig) -> Result<()> {
 
     if probe.files.is_empty() {
         eprintln!(
-            "\n\x1b[31m✗\x1b[0m No scannable files found in \x1b[1m{}\x1b[0m\n",
-            watch_path.display()
+            "\n{} No scannable files found in {}\n",
+            paint::error("✗"),
+            paint::bold(&watch_path.display().to_string())
         );
         eprintln!("  Tuora supports: .py  .ts  .js  .tsx  .yaml  .yml  .json  .rs  .env*");
         eprintln!("  Is this a code project directory?\n");
@@ -140,7 +143,8 @@ pub async fn run(cfg: ScanConfig) -> Result<()> {
     // Warn but continue when no known framework is detected
     if probe.detected_framework == crate::types::Framework::Unknown {
         eprintln!(
-            "  \x1b[33m⚠ No agentic framework detected — running in traditional SAST mode.\x1b[0m\n"
+            "  {}\n",
+            paint::warn("⚠ No agentic framework detected — running in traditional SAST mode.")
         );
     }
 
@@ -158,7 +162,7 @@ pub async fn run(cfg: ScanConfig) -> Result<()> {
                     Ok::<_, anyhow::Error>(Some((client, clone)))
                 }
                 Err(e) => {
-                    eprintln!("\n\x1b[31mAuthentication failed:\x1b[0m {}", e);
+                    eprintln!("\n{} {}", paint::error("Authentication failed:"), e);
                     std::process::exit(1);
                 }
             }
@@ -178,7 +182,7 @@ pub async fn run(cfg: ScanConfig) -> Result<()> {
             match fetcher.fetch(&auth).await {
                 Ok(result) => Ok::<_, anyhow::Error>(result),
                 Err(e) => {
-                    eprintln!("\n\x1b[33mRule fetch failed:\x1b[0m {}", e);
+                    eprintln!("\n{} {}", paint::warn("Rule fetch failed:"), e);
                     Err(e)
                 }
             }
@@ -215,7 +219,10 @@ pub async fn run(cfg: ScanConfig) -> Result<()> {
     let files_map: HashMap<PathBuf, IngestedFile> = workspace
         .files
         .into_iter()
-        .map(|f| (f.path.clone(), f))
+        .map(|f| {
+            let key = f.path.canonicalize().unwrap_or_else(|_| f.path.clone());
+            (key, f)
+        })
         .collect();
 
     let violations_by_file = group_violations_by_file(baseline_violations.clone());
@@ -239,7 +246,10 @@ pub async fn run(cfg: ScanConfig) -> Result<()> {
 
     // ── Phase 2: Watch Loop ───────────────────────────────────────────────
 
-    println!("\x1b[90m  Watching for changes…\x1b[0m (Ctrl+C to exit)\n");
+    println!(
+        "  {} (Ctrl+C to exit)\n",
+        paint::dim("Watching for changes…")
+    );
 
     // Build gitignore matcher from .gitignore if it exists
     let gitignore = build_gitignore(&cfg.path);
@@ -359,22 +369,23 @@ pub async fn run(cfg: ScanConfig) -> Result<()> {
             let mut re_eval_files: Vec<IngestedFile> = Vec::new();
 
             for path in &changed {
+                let path = path.canonicalize().unwrap_or_else(|_| path.clone());
                 if path.exists() {
-                    match re_ingest_file(path) {
+                    match re_ingest_file(&path) {
                         Some(ingested) => {
                             state.files.insert(path.clone(), ingested.clone());
                             re_eval_files.push(ingested);
                         }
                         None => {
                             // Non-scannable file type — remove stale state if present
-                            state.files.remove(path);
-                            state.violations_by_file.remove(path);
+                            state.files.remove(&path);
+                            state.violations_by_file.remove(&path);
                         }
                     }
                 } else {
                     // Deleted file — remove from state
-                    state.files.remove(path);
-                    state.violations_by_file.remove(path);
+                    state.files.remove(&path);
+                    state.violations_by_file.remove(&path);
                 }
             }
 
@@ -389,11 +400,21 @@ pub async fn run(cfg: ScanConfig) -> Result<()> {
             });
             new_violations = group_violations_by_file(file_violations);
 
+            // Canonicalize changed paths for consistent map lookups in delta + commit
+            let changed_canonical: Vec<PathBuf> = changed
+                .iter()
+                .map(|p| p.canonicalize().unwrap_or_else(|_| p.clone()))
+                .collect();
+
             // Compute delta before updating state
-            let delta = compute_delta(&state.violations_by_file, &new_violations, &changed);
+            let delta = compute_delta(
+                &state.violations_by_file,
+                &new_violations,
+                &changed_canonical,
+            );
 
             // Commit updated violations into state
-            for path in &changed {
+            for path in &changed_canonical {
                 if let Some(v) = new_violations.remove(path) {
                     state.violations_by_file.insert(path.clone(), v);
                 } else if state.files.contains_key(path) {
@@ -405,7 +426,7 @@ pub async fn run(cfg: ScanConfig) -> Result<()> {
 
             reporter.render_watch_delta(
                 &timestamp,
-                &changed,
+                &changed_canonical,
                 &delta,
                 state.health_score(),
                 elapsed_ms,
@@ -594,7 +615,11 @@ fn re_ingest_file(path: &Path) -> Option<IngestedFile> {
 fn group_violations_by_file(violations: Vec<Violation>) -> HashMap<PathBuf, Vec<Violation>> {
     let mut map: HashMap<PathBuf, Vec<Violation>> = HashMap::new();
     for v in violations {
-        map.entry(v.file_path.clone()).or_default().push(v);
+        let key = v
+            .file_path
+            .canonicalize()
+            .unwrap_or_else(|_| v.file_path.clone());
+        map.entry(key).or_default().push(v);
     }
     map
 }

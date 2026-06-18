@@ -13,6 +13,7 @@ mod banner;
 mod commands;
 mod config;
 mod credentials;
+mod paint;
 mod progress;
 mod reporter;
 mod rules;
@@ -52,13 +53,13 @@ async fn main() {
     match &cli.command {
         Some(Commands::Init) => {
             if let Err(e) = init::run(ledger_url()).await {
-                eprintln!("\n\x1b[31mError:\x1b[0m {}", e);
+                eprintln!("\n{} {}", paint::error("Error:"), e);
                 std::process::exit(1);
             }
         }
         Some(Commands::Upgrade) => {
             if let Err(e) = upgrade::run().await {
-                eprintln!("\n\x1b[31mError:\x1b[0m {}", e);
+                eprintln!("\n{} {}", paint::error("Error:"), e);
                 std::process::exit(1);
             }
         }
@@ -67,14 +68,14 @@ async fn main() {
             let api_key = match get_api_key(Some(scan_cfg.api_key.clone())) {
                 Ok(key) => key,
                 Err(e) => {
-                    eprintln!("\n\x1b[31m\x2717\x1b[0m {}", e);
+                    eprintln!("\n{} {}", paint::error("✗"), e);
                     std::process::exit(1);
                 }
             };
             let mut cfg = scan_cfg;
             cfg.api_key = api_key;
             if let Err(e) = watch::run(cfg).await {
-                eprintln!("\n\x1b[31mError:\x1b[0m {}", e);
+                eprintln!("\n{} {}", paint::error("Error:"), e);
                 std::process::exit(1);
             }
         }
@@ -104,19 +105,35 @@ fn init_logging() -> anyhow::Result<()> {
 
 /// Display the Tuora command list when no subcommand is provided
 fn print_help() {
-    println!("\n  \x1b[1mUsage:\x1b[0m tuora <command>\n");
-    println!("  \x1b[1mCommands:\x1b[0m");
-    println!("    \x1b[36mtuora init\x1b[0m            Set up your API key for first use");
-    println!("    \x1b[36mtuora watch\x1b[0m           Scan and watch the current directory");
-    println!("    \x1b[36mtuora watch <path>\x1b[0m    Scan and watch a specific directory path");
-    println!("    \x1b[36mtuora upgrade\x1b[0m         Upgrade to the latest release");
-    println!();
-    println!("  \x1b[1mOptions:\x1b[0m");
-    println!("    \x1b[90m-a, --api-key <KEY>\x1b[0m    Tuora API key (or set TUORA_API_KEY)");
+    println!("\n  {} tuora <command>\n", paint::bold("Usage:"));
+    println!("  {}", paint::bold("Commands:"));
     println!(
-        "    \x1b[90m-f, --format <FMT>\x1b[0m     Output format: ansi (default), json, plain"
+        "    {}            Set up your API key for first use",
+        paint::accent("tuora init")
     );
-    println!("    \x1b[90m-V, --version\x1b[0m          Print version");
+    println!(
+        "    {}           Scan and watch the current directory",
+        paint::accent("tuora watch")
+    );
+    println!(
+        "    {}    Scan and watch a specific directory path",
+        paint::accent("tuora watch <path>")
+    );
+    println!(
+        "    {}         Upgrade to the latest release",
+        paint::accent("tuora upgrade")
+    );
     println!();
-    println!("  \x1b[1mDocs:\x1b[0m https://runtuora.com/docs\n");
+    println!("  {}", paint::bold("Options:"));
+    println!(
+        "    {}    Tuora API key (or set TUORA_API_KEY)",
+        paint::dim("-a, --api-key <KEY>")
+    );
+    println!(
+        "    {}     Output format: ansi (default), json, plain",
+        paint::dim("-f, --format <FMT>")
+    );
+    println!("    {}          Print version", paint::dim("-V, --version"));
+    println!();
+    println!("  {} https://runtuora.com/docs\n", paint::bold("Docs:"));
 }

@@ -1,5 +1,7 @@
 //! Core type definitions for Tuora static analysis engine
 
+use owo_colors::OwoColorize;
+use owo_colors::Stream;
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 
@@ -23,13 +25,22 @@ impl Severity {
         }
     }
 
-    /// ANSI color code for terminal output
-    pub fn ansi_color(&self) -> &'static str {
+    /// Severity label styled with the appropriate color for terminal output.
+    pub fn styled_label(&self) -> String {
+        let label = format!("{:?}", self).to_uppercase();
         match self {
-            Severity::Critical => "\x1b[31m", // Red
-            Severity::High => "\x1b[91m",     // Bright Red
-            Severity::Medium => "\x1b[33m",   // Yellow
-            Severity::Low => "\x1b[36m",      // Cyan
+            Severity::Critical => {
+                format!("{}", label.if_supports_color(Stream::Stdout, |t| t.red()))
+            }
+            Severity::High => format!(
+                "{}",
+                label.if_supports_color(Stream::Stdout, |t| t.bright_red())
+            ),
+            Severity::Medium => format!(
+                "{}",
+                label.if_supports_color(Stream::Stdout, |t| t.yellow())
+            ),
+            Severity::Low => format!("{}", label.if_supports_color(Stream::Stdout, |t| t.cyan())),
         }
     }
 }
@@ -144,7 +155,7 @@ pub struct Violation {
 }
 
 /// Framework types that Tuora can detect and analyze
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum Framework {
     // Python agentic frameworks
     CrewAI,

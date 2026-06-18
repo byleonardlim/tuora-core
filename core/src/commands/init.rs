@@ -5,6 +5,7 @@
 
 use crate::auth::AuthClient;
 use crate::credentials::{get_existing_api_key, prompt_for_api_key, store_api_key};
+use crate::paint;
 use crate::progress::Progress;
 use anyhow::{Context, Result};
 use std::io::{self, Write};
@@ -12,7 +13,7 @@ use tracing::{debug, info};
 
 /// Run the init command
 pub async fn run(ledger_url: String) -> Result<()> {
-    println!("\n\x1b[1m\x1b[36mTuora First-Time Setup\x1b[0m");
+    println!("\n{}", paint::brand("Tuora First-Time Setup"));
     println!("{}", "─".repeat(50));
 
     // Check if already configured — single keychain read covers both existence and source
@@ -26,7 +27,8 @@ pub async fn run(ledger_url: String) -> Result<()> {
             "OS keyring"
         };
         println!(
-            "\n\x1b[33m⚠\x1b[0m An API key is already stored in the {}.",
+            "\n{} An API key is already stored in the {}.",
+            paint::warn("⚠"),
             source
         );
         print!("Do you want to reinitialize with a new API key? [y/N]: ");
@@ -54,17 +56,21 @@ pub async fn run(ledger_url: String) -> Result<()> {
             // Store in keyring
             store_api_key(&api_key).context("Failed to store API key")?;
 
-            println!("\n\x1b[32m\x2713\x1b[0m API key validated and stored securely");
-            println!("\x1b[32m\x2713\x1b[0m Ready to scan. Run \x1b[1mtuora\x1b[0m to begin.");
+            println!(
+                "\n{} API key validated and stored securely",
+                paint::success("✓")
+            );
+            println!(
+                "{} Ready to scan. Run {} to begin.",
+                paint::success("✓"),
+                paint::bold("tuora")
+            );
 
             info!("API key configured successfully");
             Ok(())
         }
         Err(e) => {
-            eprintln!(
-                "\n\x1b[31m\x2717\x1b[0m API key validation failed: {}\x1b[0m",
-                e
-            );
+            eprintln!("\n{} API key validation failed: {}", paint::error("✗"), e);
             eprintln!("\nPlease check your API key and try again.");
             eprintln!("Get your API key from: https://runtuora.com/dashboard");
             std::process::exit(1);

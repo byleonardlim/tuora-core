@@ -3,6 +3,7 @@
 //! Downloads the latest release asset for the current platform, verifies it is
 //! a valid executable, then atomically replaces the running binary.
 
+use crate::paint;
 use anyhow::{Context, Result, bail};
 use serde::Deserialize;
 use std::io::Write;
@@ -19,9 +20,12 @@ struct GithubRelease {
 pub async fn run() -> Result<()> {
     let current = env!("CARGO_PKG_VERSION");
 
-    println!("\n  \x1b[1mTuora Upgrade\x1b[0m");
+    println!("\n  {}", paint::bold("Tuora Upgrade"));
     println!("  {}", "─".repeat(40));
-    println!("  Current version: \x1b[36mv{}\x1b[0m", current);
+    println!(
+        "  Current version: {}",
+        paint::accent(&format!("v{}", current))
+    );
 
     // ── Step 1: Fetch latest release tag ──────────────────────────────────
 
@@ -32,11 +36,17 @@ pub async fn run() -> Result<()> {
     let latest_tag = fetch_latest_tag(&client).await?;
     let latest = latest_tag.trim_start_matches('v');
 
-    println!(" \x1b[32m✓\x1b[0m");
-    println!("  Latest version:  \x1b[36mv{}\x1b[0m", latest);
+    println!(" {}", paint::success("✓"));
+    println!(
+        "  Latest version:  {}",
+        paint::accent(&format!("v{}", latest))
+    );
 
     if !is_newer(latest, current) {
-        println!("\n  \x1b[32m✓\x1b[0m Already on the latest version.\n");
+        println!(
+            "\n  {} Already on the latest version.\n",
+            paint::success("✓")
+        );
         return Ok(());
     }
 
@@ -111,7 +121,11 @@ pub async fn run() -> Result<()> {
         )
     })?;
 
-    println!("  \x1b[32m✓\x1b[0m Upgraded to \x1b[1mv{}\x1b[0m\n", latest);
+    println!(
+        "  {} Upgraded to {}\n",
+        paint::success("✓"),
+        paint::bold(&format!("v{}", latest))
+    );
     Ok(())
 }
 

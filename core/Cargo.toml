@@ -51,5 +51,8 @@ sha2 = "0.10"
 notify = { version = "6" }
 ignore = "0.4"
 
+# Terminal styling — safe ANSI colors with NO_COLOR / non-TTY support
+owo-colors = { version = "4", features = ["supports-colors"] }
+
 [dev-dependencies]
 tempfile = "3"

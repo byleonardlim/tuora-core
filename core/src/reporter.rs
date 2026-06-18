@@ -2,6 +2,7 @@
 
 use crate::commands::watch::ViolationDelta;
 use crate::config::OutputFormat;
+use crate::paint;
 use crate::types::{
     DetectionConfidence, Framework, RuleId, ScanResult, Severity, ThreatRef, Violation,
 };
@@ -65,17 +66,6 @@ fn wrap_text(text: &str, width: usize) -> Vec<String> {
     lines
 }
 
-/// ANSI color for a health score value.
-fn score_color(score: u32) -> &'static str {
-    if score >= 80 {
-        "\x1b[32m"
-    } else if score >= 50 {
-        "\x1b[33m"
-    } else {
-        "\x1b[31m"
-    }
-}
-
 impl Reporter {
     pub fn new(format: OutputFormat) -> Self {
         Self { format }
@@ -101,9 +91,6 @@ impl Reporter {
             "Tuora AppSec Analysis Report".to_string()
         };
 
-        let border_style = "\x1b[1m\x1b[36m";
-        let reset = "\x1b[0m";
-
         let min_inner_width: usize = 62;
         let inner_width = std::cmp::max(min_inner_width, header_title.len() + 2);
         let top_border = format!("╔{}╗", "═".repeat(inner_width));
@@ -119,85 +106,78 @@ impl Reporter {
             " ".repeat(right_pad)
         );
 
-        writeln!(stdout, "\n{}{top_border}{}", border_style, reset)?;
-        writeln!(stdout, "{}{}{}", border_style, header_line, reset)?;
-        writeln!(stdout, "{}{bottom_border}{}\n", border_style, reset)?;
+        writeln!(stdout, "\n{}", paint::brand(&top_border))?;
+        writeln!(stdout, "{}", paint::brand(&header_line))?;
+        writeln!(stdout, "{}\n", paint::brand(&bottom_border))?;
 
         // Scan metadata
-        let dim = "\x1b[90m";
         let meta_label_width: usize = 13;
         writeln!(
             stdout,
-            "  {}{:<width$}:{} {}",
-            dim,
-            "Scan ID",
-            reset,
-            result.scan_id,
-            width = meta_label_width
+            "  {}: {}",
+            paint::dim(&format!("{:<width$}", "Scan ID", width = meta_label_width)),
+            result.scan_id
         )?;
         writeln!(
             stdout,
-            "  {}{:<width$}:{} {}",
-            dim,
-            "Framework",
-            reset,
-            result.framework.name(),
-            width = meta_label_width
+            "  {}: {}",
+            paint::dim(&format!(
+                "{:<width$}",
+                "Framework",
+                width = meta_label_width
+            )),
+            result.framework.name()
         )?;
         writeln!(
             stdout,
-            "  {}{:<width$}:{} {}",
-            dim,
-            "Files Scanned",
-            reset,
-            result.files_scanned,
-            width = meta_label_width
+            "  {}: {}",
+            paint::dim(&format!(
+                "{:<width$}",
+                "Files Scanned",
+                width = meta_label_width
+            )),
+            result.files_scanned
         )?;
         writeln!(
             stdout,
-            "  {}{:<width$}:{} {}",
-            dim,
-            "Rules Checked",
-            reset,
-            result.rules_evaluated,
-            width = meta_label_width
+            "  {}: {}",
+            paint::dim(&format!(
+                "{:<width$}",
+                "Rules Checked",
+                width = meta_label_width
+            )),
+            result.rules_evaluated
         )?;
         writeln!(
             stdout,
-            "  {}{:<width$}:{} {}ms",
-            dim,
-            "Duration",
-            reset,
-            result.scan_duration_ms,
-            width = meta_label_width
+            "  {}: {}ms",
+            paint::dim(&format!("{:<width$}", "Duration", width = meta_label_width)),
+            result.scan_duration_ms
         )?;
 
         // Mode banner
         let label = mode_label(result.framework);
-        let mode_color = if result.framework != Framework::Unknown {
-            "\x1b[36m"
+        let mode_str = if result.framework != Framework::Unknown {
+            paint::accent(&label)
         } else {
-            "\x1b[33m"
+            paint::warn(&label)
         };
-        writeln!(
-            stdout,
-            "  \x1b[90mMode:\x1b[0m         {}{}\x1b[0m\n",
-            mode_color, label
-        )?;
+        writeln!(stdout, "  {:<14} {}\n", paint::dim("Mode:"), mode_str)?;
 
         // Health Score
         writeln!(
             stdout,
-            "  \x1b[1mHealth Score:  {}{}/100\x1b[0m\n",
-            score_color(result.health_score),
-            result.health_score
+            "  {}  {}/100\n",
+            paint::bold("Health Score:"),
+            paint::health_score(result.health_score)
         )?;
 
         // Violations summary
         if result.violations.is_empty() {
             writeln!(
                 stdout,
-                "  \x1b[1m\x1b[32m✓\x1b[0m No issues detected! Great job!\n"
+                "  {} No issues detected! Great job!\n",
+                paint::success("✓")
             )?;
         } else {
             self.render_violations_ansi(&mut stdout, &result.violations)?;
@@ -206,7 +186,8 @@ impl Reporter {
         // Footer
         writeln!(
             stdout,
-            "\n\x1b[90m────────────────────────────────────────────────────────────\x1b[0m\n"
+            "\n{}\n",
+            paint::dim("────────────────────────────────────────────────────────────")
         )?;
 
         Ok(())
@@ -235,8 +216,11 @@ impl Reporter {
         // Summary header
         writeln!(
             stdout,
-            "  \x1b[1mIssues Found: {} Critical, {} High, {} Medium, {} Low\x1b[0m\n",
-            critical, high, medium, low
+            "  {}\n",
+            paint::bold(&format!(
+                "Issues Found: {} Critical, {} High, {} Medium, {} Low",
+                critical, high, medium, low
+            ))
         )?;
 
         // Group violations by rule_id
@@ -278,61 +262,58 @@ impl Reporter {
             Severity::Low => "⚠️",
         };
 
-        let severity_str = format!("{:?}", severity).to_uppercase();
-
         // Confidence badge
-        let (conf_badge, conf_color) = match first.confidence {
-            DetectionConfidence::Confirmed => ("CONFIRMED", "\x1b[32m"),
-            DetectionConfidence::Heuristic => ("HEURISTIC", "\x1b[90m"),
+        let conf_badge_str = match first.confidence {
+            DetectionConfidence::Confirmed => paint::success("CONFIRMED"),
+            DetectionConfidence::Heuristic => paint::dim("HEURISTIC"),
         };
 
         // Rule header with ID, severity, confidence, and title
         writeln!(
             stdout,
-            "{} {} {} [{}] {}[{}]\x1b[0m \x1b[1m\x1b[97m {} \x1b[0m",
+            "{} {} [{}] [{}] {} ",
             icon,
             rule_id.0,
-            severity.ansi_color(),
-            severity_str,
-            conf_color,
-            conf_badge,
-            first.tool_target
+            severity.styled_label(),
+            conf_badge_str,
+            paint::bold_white(&first.tool_target)
         )?;
 
         // Description (wrapped at 88 chars, indented)
+        let bar = paint::dim("│");
         let desc_lines = wrap_text(&first.plain_message, 88);
         for line in &desc_lines {
-            writeln!(stdout, "  \x1b[90m│\x1b[0m {}", line)?;
+            writeln!(stdout, "  {} {}", bar, line)?;
         }
 
         // Affected locations
-        writeln!(stdout, "  \x1b[90m│\x1b[0m")?;
-        writeln!(
-            stdout,
-            "  \x1b[90m│\x1b[0m \x1b[1mAffected locations:\x1b[0m"
-        )?;
+        writeln!(stdout, "  {}", bar)?;
+        writeln!(stdout, "  {} {}", bar, paint::bold("Affected locations:"))?;
         for v in violations {
             let line_str = v.line_number.map(|l| format!(":{}", l)).unwrap_or_default();
             writeln!(
                 stdout,
-                "  \x1b[90m│\x1b[0m   • {}{}",
+                "  {}   • {}{}",
+                bar,
                 v.file_path.display(),
                 line_str
             )?;
         }
 
         // Remediation (wrapped at 88 chars)
-        writeln!(stdout, "  \x1b[90m│\x1b[0m")?;
+        writeln!(stdout, "  {}", bar)?;
         let fix_lines = wrap_text(&first.plain_remediation, 88);
         if let Some(first_line) = fix_lines.first() {
             writeln!(
                 stdout,
-                "  \x1b[90m│\x1b[0m \x1b[32m💡 Fix:\x1b[0m {}",
+                "  {} {} {}",
+                bar,
+                paint::success("💡 Fix:"),
                 first_line
             )?;
         }
         for line in fix_lines.iter().skip(1) {
-            writeln!(stdout, "  \x1b[90m│\x1b[0m     {}", line)?;
+            writeln!(stdout, "  {}     {}", bar, line)?;
         }
 
         // Threat framework citations (only shown when present)
@@ -366,8 +347,9 @@ impl Reporter {
                 .collect();
             writeln!(
                 stdout,
-                "  \x1b[90m│  Refs: {}\x1b[0m",
-                citations.join(" · ")
+                "  {}  Refs: {}",
+                bar,
+                paint::dim(&citations.join(" · "))
             )?;
         }
 
@@ -393,18 +375,13 @@ impl Reporter {
         elapsed_ms: u64,
     ) -> Result<()> {
         let mut stdout = io::stdout();
-        let dim = "\x1b[90m";
-        let reset = "\x1b[0m";
-        let bold = "\x1b[1m";
 
         // Event header — list changed files
         for path in changed_paths {
             writeln!(
                 stdout,
-                "  {}[{}]{} {}",
-                dim,
-                timestamp,
-                reset,
+                "  {} {}",
+                paint::dim(&format!("[{}]", timestamp)),
                 path.display()
             )?;
         }
@@ -412,13 +389,9 @@ impl Reporter {
         if delta.is_empty() {
             writeln!(
                 stdout,
-                "  {}↳ No change in issues  ({}ms)  Health: {}{}{}/100{}\n",
-                dim,
-                elapsed_ms,
-                bold,
-                score_color(health_score),
-                health_score,
-                reset
+                "  {}  Health: {}/100\n",
+                paint::dim(&format!("↳ No change in issues  ({}ms)", elapsed_ms)),
+                paint::health_score(health_score)
             )?;
             return Ok(());
         }
@@ -428,34 +401,30 @@ impl Reporter {
             if entry.is_new {
                 writeln!(
                     stdout,
-                    "  \x1b[31m↳ NEW   {} {} [{}]{} {}{}  {}:{}{}",
+                    "  {} {} [{}]  {}  {}:{}",
+                    paint::error("↳ NEW  "),
                     v.rule_id.0,
-                    v.severity.ansi_color(),
-                    format!("{:?}", v.severity).to_uppercase(),
-                    reset,
-                    bold,
-                    v.tool_target,
-                    reset,
+                    v.severity.styled_label(),
+                    paint::bold(&v.tool_target),
                     v.file_path.display(),
                     v.line_number.map(|l| format!(":{}", l)).unwrap_or_default()
                 )?;
             } else {
                 writeln!(
                     stdout,
-                    "  \x1b[32m↳ FIXED {} — {}{}{}",
+                    "  {} {} — {}",
+                    paint::success("↳ FIXED"),
                     v.rule_id.0,
-                    dim,
-                    v.file_path.display(),
-                    reset,
+                    paint::dim(&v.file_path.display().to_string()),
                 )?;
             }
         }
 
-        let score_col = score_color(health_score);
         writeln!(
             stdout,
-            "  {}↳ Health: {}{}{}/100{}  {}({}ms){}\n",
-            dim, bold, score_col, health_score, reset, dim, elapsed_ms, reset
+            "  {}  Health: {}/100\n",
+            paint::dim(&format!("↳ ({}ms)", elapsed_ms)),
+            paint::health_score(health_score)
         )?;
 
         Ok(())
