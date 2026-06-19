@@ -44,17 +44,20 @@ fn main() {
 
     eprintln!("build.rs: Building rule-engine WASM...");
 
-    let workspace_manifest = repo_root.join("Cargo.toml");
+    // Build rule-engine directly from its manifest. The cloud/ directory is excluded
+    // from the workspace, so `-p rule-engine` from the workspace root fails. Use the
+    // rule-engine's own target directory so the subprocess never contends with the
+    // parent cargo invocation for the workspace target lock.
     let status = Command::new("cargo")
         .args([
             "build",
             "--manifest-path",
-            &workspace_manifest.to_string_lossy(),
+            &rule_engine_toml.to_string_lossy(),
+            "--target-dir",
+            &rule_engine_dir.join("target").to_string_lossy(),
             "--target",
             "wasm32-unknown-unknown",
             "--release",
-            "-p",
-            "rule-engine",
         ])
         .status();
 
@@ -70,7 +73,7 @@ fn main() {
         }
     }
 
-    let source = repo_root
+    let source = rule_engine_dir
         .join("target")
         .join("wasm32-unknown-unknown")
         .join("release")

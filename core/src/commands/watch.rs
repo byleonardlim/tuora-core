@@ -460,6 +460,11 @@ fn is_relevant_event(event: &Event, gitignore: &Option<ignore::gitignore::Gitign
     true
 }
 
+/// Directories that are ambiguous and need context-aware skipping.
+/// These should only be skipped if they appear to be build/output directories,
+/// not when they're part of the source tree (e.g., src/lib/ in SvelteKit).
+const CONTEXTUAL_SKIP_DIRS: &[&str] = &["lib", "bin", "obj"];
+
 /// Check if a path should be ignored based on .gitignore or fallback heuristics.
 fn is_path_ignored(path: &Path, gitignore: &Option<ignore::gitignore::Gitignore>) -> bool {
     // First check gitignore if available
@@ -471,7 +476,26 @@ fn is_path_ignored(path: &Path, gitignore: &Option<ignore::gitignore::Gitignore>
         // Fallback: check against known large directory names
         if let Some(name) = path.file_name() {
             let name = name.to_string_lossy();
-            if ALWAYS_SKIP_DIRS.iter().any(|skip| name == *skip) {
+
+            // Always skip these directories regardless of context
+            if ALWAYS_SKIP_DIRS
+                .iter()
+                .filter(|&&d| !CONTEXTUAL_SKIP_DIRS.contains(&d))
+                .any(|&skip| name == skip)
+            {
+                return true;
+            }
+
+            // Context-aware skipping: only skip "lib", "bin", "obj" if they
+            // appear to be build directories, not source directories (e.g., src/lib/)
+            if CONTEXTUAL_SKIP_DIRS.contains(&name.as_ref()) {
+                // Don't skip if parent is "src" - this is a source folder
+                if let Some(parent) = path.parent()
+                    && let Some(parent_name) = parent.file_name()
+                    && parent_name == "src"
+                {
+                    return false;
+                }
                 return true;
             }
         }

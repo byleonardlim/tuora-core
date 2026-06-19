@@ -9,6 +9,7 @@ Cargo.lock
 
 # Dev WASM artifacts
 core/dev/def-*.wasm
+core/dev/rule-engine-v*.wasm
 .dev-bundles/
 scripts/
 
