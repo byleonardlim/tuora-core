@@ -1,6 +1,6 @@
 [package]
 name = "tuora"
-version = "0.4.11"
+version = "0.4.12"
 edition = "2024"
 description = "Code watcher and analyzer for vibe-coded applications"
 license = "Apache-2.0"
