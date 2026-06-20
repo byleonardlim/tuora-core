@@ -190,14 +190,40 @@ impl Scanner {
                 .map(|n| n.to_string_lossy().starts_with(".env"))
                 .unwrap_or(false);
 
-        // Only ingest supported extensions (or .env* files)
-        if !self.extensions.contains(&extension) && !is_env_file {
+        // Ingest deployment context files that help the rule engine decide
+        // whether .env files are actually shipped or ignored.
+        let is_deployment_context_file = path
+            .file_name()
+            .map(|n| {
+                let name = n.to_string_lossy();
+                name.eq_ignore_ascii_case(".gitignore")
+                    || name.eq_ignore_ascii_case("Dockerfile")
+                    || name.eq_ignore_ascii_case("dockerfile")
+                    || name.starts_with("Dockerfile.")
+                    || name.starts_with("dockerfile.")
+            })
+            .unwrap_or(false);
+
+        // Only ingest supported extensions (or .env* / deployment context files)
+        if !self.extensions.contains(&extension) && !is_env_file && !is_deployment_context_file {
             return Ok(());
         }
 
         // Use synthetic extension tag for .env files so rules can branch on it
         let extension = if is_env_file {
             "env".to_string()
+        } else if is_deployment_context_file {
+            // Normalise the synthetic extension so rules can branch on it
+            path.file_name()
+                .map(|n| {
+                    let name = n.to_string_lossy();
+                    if name.eq_ignore_ascii_case(".gitignore") {
+                        "gitignore".to_string()
+                    } else {
+                        "dockerfile".to_string()
+                    }
+                })
+                .unwrap_or(extension)
         } else {
             extension
         };
@@ -365,5 +391,43 @@ mod tests {
         let snapshot = scanner.scan().unwrap();
 
         assert_eq!(snapshot.detected_framework, Framework::OpenAI);
+    }
+
+    #[test]
+    fn test_scanner_ingests_deployment_context_files() {
+        let temp = TempDir::new().unwrap();
+        let mut env = fs::File::create(temp.path().join(".env")).unwrap();
+        writeln!(env, "NODE_ENV=development").unwrap();
+        let mut gi = fs::File::create(temp.path().join(".gitignore")).unwrap();
+        writeln!(gi, ".env").unwrap();
+        let mut df = fs::File::create(temp.path().join("Dockerfile")).unwrap();
+        writeln!(df, "FROM node:20").unwrap();
+        let mut df2 = fs::File::create(temp.path().join("Dockerfile.prod")).unwrap();
+        writeln!(df2, "FROM node:20-alpine").unwrap();
+        let mut compose = fs::File::create(temp.path().join("docker-compose.yml")).unwrap();
+        writeln!(compose, "version: '3'").unwrap();
+
+        let scanner = Scanner::new(temp.path());
+        let snapshot = scanner.scan().unwrap();
+
+        // Should ingest .env, .gitignore, Dockerfile, Dockerfile.prod, and docker-compose.yml
+        let exts: Vec<&str> = snapshot
+            .files
+            .iter()
+            .map(|f| f.extension.as_str())
+            .collect();
+        assert!(exts.contains(&"env"), "scanner should ingest .env");
+        assert!(
+            exts.contains(&"gitignore"),
+            "scanner should ingest .gitignore"
+        );
+        assert!(
+            exts.iter().filter(|&&e| e == "dockerfile").count() >= 2,
+            "scanner should ingest Dockerfile and Dockerfile.prod"
+        );
+        assert!(
+            exts.contains(&"yml") || exts.contains(&"yaml"),
+            "scanner should ingest docker-compose.yml"
+        );
     }
 }
