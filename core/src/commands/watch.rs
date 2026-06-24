@@ -296,21 +296,27 @@ pub async fn run(cfg: ScanConfig) -> Result<()> {
                     );
                     if is_relevant_event(&event, &gitignore) {
                         for path in event.paths {
-                            // If this is a new directory, add it to our watch list
+                            // When a new directory appears, recursively watch all of its
+                            // subdirectories and enqueue any files already inside so they
+                            // are evaluated without waiting for a subsequent file event.
+                            // This handles the case where an entire subtree is dropped
+                            // at once (e.g. vibe-coder scaffolding a new package).
                             if event.kind.is_create()
                                 && path.is_dir()
                                 && !is_path_ignored(&path, &gitignore)
                             {
-                                if let Err(e) = watcher.watch(&path, RecursiveMode::NonRecursive) {
-                                    warn!(
-                                        "Failed to watch new directory {}: {}",
-                                        path.display(),
-                                        e
-                                    );
-                                } else {
-                                    debug!("Added watch for new directory: {}", path.display());
-                                    watched_dirs.insert(path.clone());
-                                }
+                                watch_new_dir_tree(
+                                    &path,
+                                    &mut watcher,
+                                    &mut watched_dirs,
+                                    &gitignore,
+                                    &mut pending,
+                                );
+                                continue;
+                            }
+                            // Skip directories — only files need re-evaluation
+                            if path.is_dir() {
+                                continue;
                             }
                             debug!("Processing fs event: {}", path.display());
                             pending.push(path);
@@ -400,10 +406,13 @@ pub async fn run(cfg: ScanConfig) -> Result<()> {
             });
             new_violations = group_violations_by_file(file_violations);
 
-            // Canonicalize changed paths for consistent map lookups in delta + commit
+            // Canonicalize changed paths for consistent map lookups in delta + commit.
+            // Exclude directories — PollWatcher fires mtime events on parent dirs
+            // whenever a child file changes, which is noise, not a real change.
             let changed_canonical: Vec<PathBuf> = changed
                 .iter()
                 .map(|p| p.canonicalize().unwrap_or_else(|_| p.clone()))
+                .filter(|p| !p.is_dir())
                 .collect();
 
             // Compute delta before updating state
@@ -439,6 +448,70 @@ pub async fn run(cfg: ScanConfig) -> Result<()> {
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
+
+/// Recursively register watches for a newly-created directory and all its
+/// subdirectories, then enqueue any scannable files already inside as pending
+/// events so they are evaluated on the next debounce window.
+///
+/// This handles the scenario where an entire subtree is created at once (e.g.
+/// a vibe-coder scaffolding a new package) — without this, only the top-level
+/// directory would be watched and the files inside would be invisible until a
+/// subsequent edit.
+fn watch_new_dir_tree(
+    dir: &Path,
+    watcher: &mut PollWatcher,
+    watched_dirs: &mut std::collections::HashSet<PathBuf>,
+    gitignore: &Option<ignore::gitignore::Gitignore>,
+    pending: &mut Vec<PathBuf>,
+) {
+    if is_path_ignored(dir, gitignore) {
+        return;
+    }
+
+    // Register a non-recursive watch on this directory
+    if !watched_dirs.contains(dir) {
+        match watcher.watch(dir, RecursiveMode::NonRecursive) {
+            Ok(()) => {
+                debug!("Added watch for new directory: {}", dir.display());
+                watched_dirs.insert(dir.to_path_buf());
+            }
+            Err(e) => {
+                warn!("Failed to watch new directory {}: {}", dir.display(), e);
+                return;
+            }
+        }
+    }
+
+    let entries = match fs::read_dir(dir) {
+        Ok(e) => e,
+        Err(_) => return,
+    };
+
+    let mut has_files = false;
+
+    for entry in entries.flatten() {
+        let path = entry.path();
+        if path.is_dir() {
+            // Recurse into subdirectories
+            watch_new_dir_tree(&path, watcher, watched_dirs, gitignore, pending);
+        } else if re_ingest_file(&path).is_some() {
+            // Enqueue scannable files so they are evaluated immediately
+            debug!(
+                "Enqueuing new file from watched subtree: {}",
+                path.display()
+            );
+            pending.push(path);
+            has_files = true;
+        }
+    }
+
+    if !has_files {
+        debug!(
+            "New directory has no scannable files yet, watching for future changes: {}",
+            dir.display()
+        );
+    }
+}
 
 /// Only react to file create/modify/remove — ignore metadata, access events etc.
 /// Also filters out paths ignored by .gitignore or matching fallback heuristics.
