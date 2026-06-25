@@ -147,7 +147,7 @@ impl Reporter {
             stdout,
             "  {}: {}",
             paint::dim(&format!("{:<width$}", "Scan ID", width = meta_label_width)),
-            result.scan_id
+            paint::accent(&result.scan_id)
         )?;
         writeln!(
             stdout,
@@ -157,7 +157,7 @@ impl Reporter {
                 "Framework",
                 width = meta_label_width
             )),
-            result.framework.name()
+            paint::accent(result.framework.name())
         )?;
         writeln!(
             stdout,
@@ -167,7 +167,7 @@ impl Reporter {
                 "Files Scanned",
                 width = meta_label_width
             )),
-            result.files_scanned
+            paint::accent(&result.files_scanned.to_string())
         )?;
         writeln!(
             stdout,
@@ -177,13 +177,13 @@ impl Reporter {
                 "Rules Checked",
                 width = meta_label_width
             )),
-            result.rules_evaluated
+            paint::accent(&result.rules_evaluated.to_string())
         )?;
         writeln!(
             stdout,
             "  {}: {}ms",
             paint::dim(&format!("{:<width$}", "Duration", width = meta_label_width)),
-            result.scan_duration_ms
+            paint::accent(&result.scan_duration_ms.to_string())
         )?;
 
         // Mode banner
@@ -199,7 +199,7 @@ impl Reporter {
         writeln!(
             stdout,
             "  {}  {}/100\n",
-            paint::bold("Health Score:"),
+            paint::brand("Health Score:"),
             paint::health_score(result.health_score)
         )?;
 
@@ -248,7 +248,7 @@ impl Reporter {
         writeln!(
             stdout,
             "  {}\n",
-            paint::bold(&format!(
+            paint::brand(&format!(
                 "Issues Found: {} Critical, {} High, {} Medium, {} Low",
                 critical, high, medium, low
             ))
@@ -287,10 +287,10 @@ impl Reporter {
         let severity = first.severity;
 
         let icon = match severity {
-            Severity::Critical => "🛑",
-            Severity::High => "🛑",
-            Severity::Medium => "⚠️",
-            Severity::Low => "⚠️",
+            Severity::Critical => paint::critical("●"),
+            Severity::High => paint::error("▲"),
+            Severity::Medium => paint::warn("◆"),
+            Severity::Low => paint::low("○"),
         };
 
         // Confidence badge
@@ -304,7 +304,7 @@ impl Reporter {
             stdout,
             "{} {} [{}] [{}] {} ",
             icon,
-            rule_id.0,
+            paint::accent(&rule_id.0),
             severity.styled_label(),
             conf_badge_str,
             paint::bold_white(&first.tool_target)
@@ -319,7 +319,7 @@ impl Reporter {
 
         // Affected locations
         writeln!(stdout, "  {}", bar)?;
-        writeln!(stdout, "  {} {}", bar, paint::bold("Affected locations:"))?;
+        writeln!(stdout, "  {} {}", bar, paint::accent("Affected locations:"))?;
         for v in violations {
             let line_str = v.line_number.map(|l| format!(":{}", l)).unwrap_or_default();
             writeln!(
@@ -339,7 +339,7 @@ impl Reporter {
                 stdout,
                 "  {} {} {}",
                 bar,
-                paint::success("💡 Fix:"),
+                paint::success("→ Fix:"),
                 first_line
             )?;
         }
@@ -351,8 +351,9 @@ impl Reporter {
         if !first.threat_refs.is_empty() {
             writeln!(
                 stdout,
-                "  {}  Refs: {}",
+                "  {}  {}: {}",
                 bar,
+                paint::accent("Refs"),
                 paint::dim(&format_threat_refs(&first.threat_refs))
             )?;
         }
@@ -394,7 +395,7 @@ impl Reporter {
             writeln!(
                 stdout,
                 "  {}  Health: {}/100\n",
-                paint::dim(&format!("↳ No change in issues  ({}ms)", elapsed_ms)),
+                paint::dim(&format!("→ No change in issues  ({}ms)", elapsed_ms)),
                 paint::health_score(health_score)
             )?;
             return Ok(());
@@ -410,8 +411,8 @@ impl Reporter {
                 writeln!(
                     stdout,
                     "  {} {} [{}] [{}] {}  {}{}",
-                    paint::error("↳ NEW  "),
-                    v.rule_id.0,
+                    paint::error("+ NEW  "),
+                    paint::accent(&v.rule_id.0),
                     v.severity.styled_label(),
                     conf_badge_str,
                     paint::bold_white(&v.tool_target),
@@ -432,7 +433,7 @@ impl Reporter {
                         stdout,
                         "    {} {} {}",
                         bar,
-                        paint::success("💡 Fix:"),
+                        paint::success("→ Fix:"),
                         first_line
                     )?;
                 }
@@ -442,8 +443,9 @@ impl Reporter {
                 if !v.threat_refs.is_empty() {
                     writeln!(
                         stdout,
-                        "    {}  Refs: {}",
+                        "    {}  {}: {}",
                         bar,
+                        paint::accent("Refs"),
                         paint::dim(&format_threat_refs(&v.threat_refs))
                     )?;
                 }
@@ -452,8 +454,8 @@ impl Reporter {
                 writeln!(
                     stdout,
                     "  {} {} — {}",
-                    paint::success("↳ FIXED"),
-                    v.rule_id.0,
+                    paint::success("- FIXED"),
+                    paint::accent(&v.rule_id.0),
                     paint::dim(&v.file_path.display().to_string()),
                 )?;
             }
@@ -462,7 +464,7 @@ impl Reporter {
         writeln!(
             stdout,
             "  {}  Health: {}/100\n",
-            paint::dim(&format!("↳ ({}ms)", elapsed_ms)),
+            paint::dim(&format!("→ ({}ms)", elapsed_ms)),
             paint::health_score(health_score)
         )?;
 

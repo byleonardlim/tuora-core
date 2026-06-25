@@ -9,15 +9,18 @@ use owo_colors::Stream;
 
 // ── Style primitives ──────────────────────────────────────────────────────────
 
-/// Cyan + bold — primary brand accent (banner, headings, command names).
+/// Seaweed-600 + bold — primary brand accent (banner, headings, command names).
 pub fn brand(s: &str) -> String {
-    let styled = s.if_supports_color(Stream::Stdout, |t| t.cyan());
+    let styled = s.if_supports_color(Stream::Stdout, |t| t.truecolor(20, 96, 65));
     format!("{}", styled.if_supports_color(Stream::Stdout, |t| t.bold()))
 }
 
-/// Cyan — secondary accent (version numbers, paths, links).
+/// Seaweed-500 — secondary accent (version numbers, paths, links).
 pub fn accent(s: &str) -> String {
-    format!("{}", s.if_supports_color(Stream::Stdout, |t| t.cyan()))
+    format!(
+        "{}",
+        s.if_supports_color(Stream::Stdout, |t| t.truecolor(26, 122, 82))
+    )
 }
 
 /// Dim white — metadata labels, secondary info, rule borders.
@@ -81,9 +84,12 @@ pub fn warn_err(s: &str) -> String {
     format!("{}", s.if_supports_color(Stream::Stderr, |t| t.yellow()))
 }
 
-/// Cyan on stderr.
+/// Seaweed-500 on stderr.
 pub fn accent_err(s: &str) -> String {
-    format!("{}", s.if_supports_color(Stream::Stderr, |t| t.cyan()))
+    format!(
+        "{}",
+        s.if_supports_color(Stream::Stderr, |t| t.truecolor(26, 122, 82))
+    )
 }
 
 // ── Health score coloring ─────────────────────────────────────────────────────
