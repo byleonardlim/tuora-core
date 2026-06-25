@@ -66,6 +66,37 @@ fn wrap_text(text: &str, width: usize) -> Vec<String> {
     lines
 }
 
+/// Format threat framework citations into a single string.
+fn format_threat_refs(refs: &[ThreatRef]) -> String {
+    use crate::types::OwaspCategory::*;
+    let citations: Vec<String> = refs
+        .iter()
+        .map(|r| match r {
+            ThreatRef::OwaspAgentic(cat) => {
+                let id = match cat {
+                    Asi01 => "01",
+                    Asi02 => "02",
+                    Asi03 => "03",
+                    Asi04 => "04",
+                    Asi05 => "05",
+                    Asi06 => "06",
+                    Asi07 => "07",
+                    Asi08 => "08",
+                    Asi09 => "09",
+                    Asi10 => "10",
+                };
+                format!("OWASP ASI{id}")
+            }
+            ThreatRef::OwaspWeb(s) => format!("OWASP {s}"),
+            ThreatRef::OwaspApi(s) => format!("OWASP API{s}"),
+            ThreatRef::Cwe(n) => format!("CWE-{n}"),
+            ThreatRef::MitreAtlas(s) => format!("ATLAS {s}"),
+            ThreatRef::NistAiRmf(s) => format!("NIST AI RMF {s}"),
+        })
+        .collect();
+    citations.join(" · ")
+}
+
 impl Reporter {
     pub fn new(format: OutputFormat) -> Self {
         Self { format }
@@ -318,38 +349,11 @@ impl Reporter {
 
         // Threat framework citations (only shown when present)
         if !first.threat_refs.is_empty() {
-            let citations: Vec<String> = first
-                .threat_refs
-                .iter()
-                .map(|r| match r {
-                    ThreatRef::OwaspAgentic(cat) => {
-                        use crate::types::OwaspCategory::*;
-                        let id = match cat {
-                            Asi01 => "01",
-                            Asi02 => "02",
-                            Asi03 => "03",
-                            Asi04 => "04",
-                            Asi05 => "05",
-                            Asi06 => "06",
-                            Asi07 => "07",
-                            Asi08 => "08",
-                            Asi09 => "09",
-                            Asi10 => "10",
-                        };
-                        format!("OWASP ASI{id}")
-                    }
-                    ThreatRef::OwaspWeb(s) => format!("OWASP {s}"),
-                    ThreatRef::OwaspApi(s) => format!("OWASP API{s}"),
-                    ThreatRef::Cwe(n) => format!("CWE-{n}"),
-                    ThreatRef::MitreAtlas(s) => format!("ATLAS {s}"),
-                    ThreatRef::NistAiRmf(s) => format!("NIST AI RMF {s}"),
-                })
-                .collect();
             writeln!(
                 stdout,
                 "  {}  Refs: {}",
                 bar,
-                paint::dim(&citations.join(" · "))
+                paint::dim(&format_threat_refs(&first.threat_refs))
             )?;
         }
 
@@ -399,16 +403,51 @@ impl Reporter {
         for entry in delta {
             let v = &entry.violation;
             if entry.is_new {
+                let conf_badge_str = match v.confidence {
+                    DetectionConfidence::Confirmed => paint::success("CONFIRMED"),
+                    DetectionConfidence::Heuristic => paint::dim("HEURISTIC"),
+                };
                 writeln!(
                     stdout,
-                    "  {} {} [{}]  {}  {}:{}",
+                    "  {} {} [{}] [{}] {}  {}{}",
                     paint::error("↳ NEW  "),
                     v.rule_id.0,
                     v.severity.styled_label(),
-                    paint::bold(&v.tool_target),
+                    conf_badge_str,
+                    paint::bold_white(&v.tool_target),
                     v.file_path.display(),
                     v.line_number.map(|l| format!(":{}", l)).unwrap_or_default()
                 )?;
+
+                // Context and fix
+                let bar = paint::dim("│");
+                let desc_lines = wrap_text(&v.plain_message, 88);
+                for line in &desc_lines {
+                    writeln!(stdout, "    {} {}", bar, line)?;
+                }
+                writeln!(stdout, "    {}", bar)?;
+                let fix_lines = wrap_text(&v.plain_remediation, 88);
+                if let Some(first_line) = fix_lines.first() {
+                    writeln!(
+                        stdout,
+                        "    {} {} {}",
+                        bar,
+                        paint::success("💡 Fix:"),
+                        first_line
+                    )?;
+                }
+                for line in fix_lines.iter().skip(1) {
+                    writeln!(stdout, "    {}     {}", bar, line)?;
+                }
+                if !v.threat_refs.is_empty() {
+                    writeln!(
+                        stdout,
+                        "    {}  Refs: {}",
+                        bar,
+                        paint::dim(&format_threat_refs(&v.threat_refs))
+                    )?;
+                }
+                writeln!(stdout)?;
             } else {
                 writeln!(
                     stdout,
@@ -516,5 +555,19 @@ mod tests {
         let result = create_test_result();
         // Just verify it doesn't panic
         let _ = reporter.render(&result);
+    }
+
+    #[test]
+    fn test_render_watch_delta_shows_context_and_remediation() {
+        use crate::commands::watch::ViolationDelta;
+        let reporter = Reporter::new(OutputFormat::Ansi);
+        let violation = create_test_violation(Severity::Critical);
+        let delta = vec![ViolationDelta {
+            violation,
+            is_new: true,
+        }];
+        let result =
+            reporter.render_watch_delta("12:34:56", &[PathBuf::from("test.py")], &delta, 75, 12);
+        assert!(result.is_ok());
     }
 }
