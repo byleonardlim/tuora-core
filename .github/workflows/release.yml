@@ -21,23 +21,22 @@ env:
   CARGO_TERM_COLOR: always
 
 jobs:
-  bump-version:
-    name: Bump Version
+  # ─────────────────────────────────────────────
+  # Calculate next version (no writes)
+  # ─────────────────────────────────────────────
+  calculate-version:
+    name: Calculate Version
     if: github.event_name == 'workflow_dispatch' && github.event.inputs.bump != 'none'
     runs-on: ubuntu-latest
-    permissions:
-      contents: write
     outputs:
-      version: ${{ steps.bump.outputs.version }}
-      tag: ${{ steps.bump.outputs.tag }}
+      version: ${{ steps.calc.outputs.version }}
+      tag: ${{ steps.calc.outputs.tag }}
+      current: ${{ steps.calc.outputs.current }}
     steps:
       - uses: actions/checkout@v4
-        with:
-          # Use PAT instead of GITHUB_TOKEN so tag push triggers workflows
-          token: ${{ secrets.RELEASE_TOKEN }}
 
-      - name: Bump version
-        id: bump
+      - name: Calculate next version
+        id: calc
         run: |
           CURRENT=$(grep 'version = "' core/Cargo.toml | head -1 | sed 's/.*"\(.*\)".*/\1/')
           echo "Current version: $CURRENT"
@@ -63,21 +62,11 @@ jobs:
           esac
 
           NEW="$MAJOR.$MINOR.$PATCH"
-          echo "Bumped to: $NEW"
-
-          sed -i "s/^version = \"$CURRENT\"/version = \"$NEW\"/" core/Cargo.toml
-
-          git config user.name "GitHub Actions"
-          git config user.email "actions@github.com"
-          git add core/Cargo.toml
-          git commit -m "chore: release v$NEW"
-          git push origin HEAD:${{ github.ref_name }}
+          echo "Calculated next version: $NEW"
 
           echo "version=$NEW" >> $GITHUB_OUTPUT
           echo "tag=v$NEW" >> $GITHUB_OUTPUT
-
-          git tag "v$NEW"
-          git push origin "v$NEW"
+          echo "current=$CURRENT" >> $GITHUB_OUTPUT
 
   # ─────────────────────────────────────────────
   # Resolve previous tag (when bump = none)
@@ -109,13 +98,11 @@ jobs:
 
   test:
     name: Quality Checks
-    needs: [bump-version, resolve-version]
-    if: always() && (needs.bump-version.result == 'success' || needs.bump-version.result == 'skipped') && (needs.resolve-version.result == 'success' || needs.resolve-version.result == 'skipped')
+    needs: [calculate-version, resolve-version]
+    if: always() && (needs.calculate-version.result == 'success' || needs.calculate-version.result == 'skipped') && (needs.resolve-version.result == 'success' || needs.resolve-version.result == 'skipped')
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-        with:
-          ref: ${{ needs.bump-version.outputs.tag || needs.resolve-version.outputs.tag || github.ref }}
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
       - run: cargo test --workspace
@@ -124,7 +111,7 @@ jobs:
 
   build:
     name: Build ${{ matrix.target }}
-    needs: [test, bump-version, resolve-version]
+    needs: [test, calculate-version, resolve-version]
     if: always() && needs.test.result == 'success'
     runs-on: ${{ matrix.os }}
     strategy:
@@ -159,7 +146,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: ${{ needs.bump-version.outputs.tag || needs.resolve-version.outputs.tag || github.ref }}
+          ref: ${{ needs.resolve-version.outputs.tag || github.ref }}
 
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
@@ -224,10 +211,48 @@ jobs:
             target/${{ matrix.target }}/release/${{ matrix.asset_name }}
             target/${{ matrix.target }}/release/${{ matrix.asset_name }}.sha256
 
+  # ─────────────────────────────────────────────
+  # Commit version bump (only after build passes)
+  # ─────────────────────────────────────────────
+  commit-version:
+    name: Commit Version Bump
+    needs: [build, calculate-version]
+    if: always() && needs.build.result == 'success' && needs.calculate-version.result == 'success'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    outputs:
+      tag: ${{ steps.commit.outputs.tag }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # Use PAT instead of GITHUB_TOKEN so tag push triggers workflows
+          token: ${{ secrets.RELEASE_TOKEN }}
+
+      - name: Commit and tag
+        id: commit
+        run: |
+          CURRENT="${{ needs.calculate-version.outputs.current }}"
+          NEW="${{ needs.calculate-version.outputs.version }}"
+          TAG="${{ needs.calculate-version.outputs.tag }}"
+
+          sed -i "s/^version = \"$CURRENT\"/version = \"$NEW\"/" core/Cargo.toml
+
+          git config user.name "GitHub Actions"
+          git config user.email "actions@github.com"
+          git add core/Cargo.toml
+          git commit -m "chore: release v$NEW"
+          git push origin HEAD:${{ github.ref_name }}
+
+          git tag "$TAG"
+          git push origin "$TAG"
+
+          echo "tag=$TAG" >> $GITHUB_OUTPUT
+
   release:
     name: Create Release
-    needs: [build, bump-version, resolve-version]
-    if: always() && needs.build.result == 'success' && (needs.bump-version.result == 'success' || needs.bump-version.result == 'skipped') && (needs.resolve-version.result == 'success' || needs.resolve-version.result == 'skipped')
+    needs: [build, commit-version, resolve-version]
+    if: always() && needs.build.result == 'success' && (needs.commit-version.result == 'success' || needs.commit-version.result == 'skipped') && (needs.resolve-version.result == 'success' || needs.resolve-version.result == 'skipped')
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -244,8 +269,8 @@ jobs:
         run: |
           if [ "${{ github.ref_type }}" = "tag" ]; then
             echo "name=${{ github.ref_name }}" >> $GITHUB_OUTPUT
-          elif [ -n "${{ needs.bump-version.outputs.tag }}" ]; then
-            echo "name=${{ needs.bump-version.outputs.tag }}" >> $GITHUB_OUTPUT
+          elif [ -n "${{ needs.commit-version.outputs.tag }}" ]; then
+            echo "name=${{ needs.commit-version.outputs.tag }}" >> $GITHUB_OUTPUT
           elif [ -n "${{ needs.resolve-version.outputs.tag }}" ]; then
             echo "name=${{ needs.resolve-version.outputs.tag }}" >> $GITHUB_OUTPUT
           else
