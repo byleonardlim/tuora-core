@@ -388,16 +388,6 @@ impl Reporter {
             )?;
         }
 
-        if delta.is_empty() {
-            writeln!(
-                stdout,
-                "  {}  Health: {}/100\n",
-                paint::dim(&format!("→ No change in issues  ({}ms)", elapsed_ms)),
-                paint::health_score(health_score)
-            )?;
-            return Ok(());
-        }
-
         for entry in delta {
             let v = &entry.violation;
             if entry.is_new {
