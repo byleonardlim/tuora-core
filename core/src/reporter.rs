@@ -97,6 +97,21 @@ fn format_threat_refs(refs: &[ThreatRef]) -> String {
     citations.join(" · ")
 }
 
+/// Render a horizontal progress bar for a health score (0–100).
+fn health_score_bar(score: u32, width: usize) -> String {
+    let clamped = score.clamp(0, 100);
+    let filled = ((clamped as usize) * width / 100).clamp(0, width);
+    let empty = width.saturating_sub(filled);
+    let bar = format!("{}{}", "█".repeat(filled), "░".repeat(empty));
+    if clamped >= 80 {
+        paint::success(&bar)
+    } else if clamped >= 50 {
+        paint::warn(&bar)
+    } else {
+        paint::error(&bar)
+    }
+}
+
 impl Reporter {
     pub fn new(format: OutputFormat) -> Self {
         Self { format }
@@ -115,91 +130,51 @@ impl Reporter {
     fn render_ansi(&self, result: &ScanResult) -> Result<()> {
         let mut stdout = io::stdout();
 
-        // Header
-        let header_title = if result.framework != crate::types::Framework::Unknown {
-            format!("Tuora AppSec Analysis Report ({})", result.framework.name())
-        } else {
-            "Tuora AppSec Analysis Report".to_string()
-        };
-
-        let min_inner_width: usize = 62;
-        let inner_width = std::cmp::max(min_inner_width, header_title.len() + 2);
-        let top_border = format!("╔{}╗", "═".repeat(inner_width));
-        let bottom_border = format!("╚{}╝", "═".repeat(inner_width));
-
-        let total_pad = inner_width.saturating_sub(header_title.len());
-        let left_pad = total_pad / 2;
-        let right_pad = total_pad - left_pad;
-        let header_line = format!(
-            "║{}{}{}║",
-            " ".repeat(left_pad),
-            header_title,
-            " ".repeat(right_pad)
-        );
-
-        writeln!(stdout, "\n{}", paint::brand(&top_border))?;
-        writeln!(stdout, "{}", paint::brand(&header_line))?;
-        writeln!(stdout, "{}\n", paint::brand(&bottom_border))?;
-
-        // Scan metadata
+        // Scan metadata (two-column grid)
         let meta_label_width: usize = 13;
+        let meta_value_width: usize = 18;
+        let lbl = |s: &str| paint::dim(&format!("{:<width$}", s, width = meta_label_width));
+        let val = |s: &str| paint::accent(&format!("{:<width$}", s, width = meta_value_width));
+
         writeln!(
             stdout,
-            "  {}: {}",
-            paint::dim(&format!("{:<width$}", "Scan ID", width = meta_label_width)),
-            paint::accent(&result.scan_id)
-        )?;
-        writeln!(
-            stdout,
-            "  {}: {}",
-            paint::dim(&format!(
-                "{:<width$}",
-                "Framework",
-                width = meta_label_width
-            )),
+            "  {}: {}  {}: {}",
+            lbl("Scan ID"),
+            val(&result.scan_id),
+            lbl("Framework"),
             paint::accent(result.framework.name())
         )?;
         writeln!(
             stdout,
-            "  {}: {}",
-            paint::dim(&format!(
-                "{:<width$}",
-                "Files Scanned",
-                width = meta_label_width
-            )),
-            paint::accent(&result.files_scanned.to_string())
-        )?;
-        writeln!(
-            stdout,
-            "  {}: {}",
-            paint::dim(&format!(
-                "{:<width$}",
-                "Rules Checked",
-                width = meta_label_width
-            )),
-            paint::accent(&result.rules_evaluated.to_string())
+            "  {}: {}  {}: {}",
+            lbl("Files Scanned"),
+            val(&result.files_scanned.to_string()),
+            lbl("Rules Checked"),
+            val(&result.rules_evaluated.to_string())
         )?;
         writeln!(
             stdout,
             "  {}: {}ms",
-            paint::dim(&format!("{:<width$}", "Duration", width = meta_label_width)),
+            lbl("Duration"),
             paint::accent(&result.scan_duration_ms.to_string())
         )?;
 
-        // Mode banner
-        let label = mode_label(result.framework);
-        let mode_str = if result.framework != Framework::Unknown {
-            paint::accent(&label)
+        // Mode badge
+        let mode_text = mode_label(result.framework);
+        let mode_badge = if result.framework != Framework::Unknown {
+            paint::accent(&format!("[ {} ]", mode_text))
         } else {
-            paint::warn(&label)
+            paint::warn(&format!("[ {} ]", mode_text))
         };
-        writeln!(stdout, "  {:<14} {}\n", paint::dim("Mode:"), mode_str)?;
+        writeln!(stdout, "  {}: {}\n", lbl("Mode"), mode_badge)?;
 
         // Health Score
+        let bar = health_score_bar(result.health_score, 20);
         writeln!(
             stdout,
-            "  {}  {}/100\n",
-            paint::brand("Health Score:"),
+            "  {}:  {}  {}/100\n",
+            paint::brand("Health Score"),
+            bar,
             paint::health_score(result.health_score)
         )?;
 
@@ -217,8 +192,8 @@ impl Reporter {
         // Footer
         writeln!(
             stdout,
-            "\n{}\n",
-            paint::dim("────────────────────────────────────────────────────────────")
+            "\n  {}\n",
+            paint::brand("────────────────────────────────────────────────────────────")
         )?;
 
         Ok(())
@@ -244,14 +219,31 @@ impl Reporter {
             }
         }
 
-        // Summary header
+        // Severity summary counters
+        let crit_str = if critical > 0 {
+            paint::critical(&format!("● {} CRITICAL", critical))
+        } else {
+            paint::dim("● 0 CRITICAL")
+        };
+        let high_str = if high > 0 {
+            paint::error(&format!("▲ {} HIGH", high))
+        } else {
+            paint::dim("▲ 0 HIGH")
+        };
+        let med_str = if medium > 0 {
+            paint::warn(&format!("◆ {} MEDIUM", medium))
+        } else {
+            paint::dim("◆ 0 MEDIUM")
+        };
+        let low_str = if low > 0 {
+            paint::low(&format!("○ {} LOW", low))
+        } else {
+            paint::dim("○ 0 LOW")
+        };
         writeln!(
             stdout,
-            "  {}\n",
-            paint::brand(&format!(
-                "Issues Found: {} Critical, {} High, {} Medium, {} Low",
-                critical, high, medium, low
-            ))
+            "  {}   {}   {}   {}\n",
+            crit_str, high_str, med_str, low_str
         )?;
 
         // Group violations by rule_id
@@ -299,10 +291,15 @@ impl Reporter {
             DetectionConfidence::Heuristic => paint::dim("HEURISTIC"),
         };
 
+        // Card border
+        let bar = paint::dim("│");
+        writeln!(stdout, "  {}", paint::dim("┌─"))?;
+
         // Rule header with ID, severity, confidence, and title
         writeln!(
             stdout,
-            "{} {} [{}] [{}] {} ",
+            "  {} {} {} [{}] [{}] {}",
+            bar,
             icon,
             paint::accent(&rule_id.0),
             severity.styled_label(),
@@ -311,7 +308,6 @@ impl Reporter {
         )?;
 
         // Description (wrapped at 88 chars, indented)
-        let bar = paint::dim("│");
         let desc_lines = wrap_text(&first.plain_message, 88);
         for line in &desc_lines {
             writeln!(stdout, "  {} {}", bar, line)?;
@@ -358,6 +354,7 @@ impl Reporter {
             )?;
         }
 
+        writeln!(stdout, "  {}", paint::dim("└─"))?;
         writeln!(stdout)?;
 
         Ok(())
@@ -461,10 +458,14 @@ impl Reporter {
             }
         }
 
+        let new_count = delta.iter().filter(|d| d.is_new).count();
+        let fixed_count = delta.len().saturating_sub(new_count);
         writeln!(
             stdout,
-            "  {}  Health: {}/100\n",
+            "  {}  + {} new  ·  - {} fixed  ·  Health: {}/100\n",
             paint::dim(&format!("→ ({}ms)", elapsed_ms)),
+            paint::error(&new_count.to_string()),
+            paint::success(&fixed_count.to_string()),
             paint::health_score(health_score)
         )?;
 
