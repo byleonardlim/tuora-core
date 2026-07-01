@@ -2,7 +2,7 @@
 
 > Pre-deployment code security in-flight interceptor for AI-generated code.
 
-[![Version](https://img.shields.io/badge/version-0.4.15-seagreen)](https://github.com/byleonardlim/tuora-core/releases) [![License](https://img.shields.io/badge/license-Apache--2.0-blue)](LICENSE) [![Platform](https://img.shields.io/badge/platform-macOS%20%7C%20Linux-lightgrey)](https://github.com/byleonardlim/tuora-core) [![Runs Locally](https://img.shields.io/badge/visit-website%20sandbox-seagreen)](https://runtuora.com)
+[![Version](https://img.shields.io/badge/version-0.4.15-seagreen)](https://github.com/byleonardlim/tuora-core/releases) [![License](https://img.shields.io/badge/license-Apache--2.0-blue)](LICENSE) [![Platform](https://img.shields.io/badge/platform-macOS%20%7C%20Linux-lightgrey)](https://github.com/byleonardlim/tuora-core) [![Runs Locally](https://img.shields.io/badge/visit-website-seagreen)](https://runtuora.com)
 
 ---
 
