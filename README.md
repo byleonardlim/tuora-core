@@ -14,8 +14,6 @@ A security tool that slows you down has already failed. Tuora is built around th
 
 The analysis engine runs entirely inside a **local WASM sandbox**. Your code never leaves your machine — not even for telemetry.
 
-Current version: **0.4.15**.
-
 ---
 
 ## Why Tuora
@@ -75,10 +73,44 @@ One terminal tab. No configuration. The loop looks like this:
 ```
 $ tuora watch
 
-[14:32:05] ./src/lib/db.ts          No change (2ms)  Health: 100/100
-[14:32:07] ./api/client.ts
-  ↳ NEW  BZ-SEC-01  [CRITICAL]  hardcoded-api-key  :14
-  ↳ Health: 0/100 • Blocked
+████████╗██╗   ██╗ ██████╗ ██████╗  █████╗
+╚══██╔══╝██║   ██║██╔═══██╗██╔══██╗██╔══██╗
+   ██║   ██║   ██║██║   ██║██████╔╝███████║
+   ██║   ██║   ██║██║   ██║██╔══██╗██╔══██║
+   ██║   ╚██████╔╝╚██████╔╝██║  ██║██║  ██║
+   ╚═╝    ╚═════╝  ╚═════╝ ╚═╝  ╚═╝╚═╝  ╚═╝
+
+  tuora authenticating... ✓
+  tuora loading rules... ✓ (v1.4.0, 28 rules)
+  tuora scanning files  (Vercel AI detected, 23 files)
+
+  Scan ID:       a1b2c3d4-e5f6    Framework:     Vercel AI
+  Files Scanned: 23               Rules Checked: 28
+  Duration:      112ms
+
+  Mode: [ Agentic + SAST (Vercel AI) — 28 rules active ]
+
+  Health Score:  ████████████████████  100/100
+
+  ✓ No issues detected! Great job!
+
+  ────────────────────────────────────────────────────────────
+
+  Watching for changes… (Ctrl+C to exit)
+
+  [14:32:05] ./src/lib/db.ts
+  → (2ms)  + 0 new  ·  - 0 fixed  ·  Health: 100/100
+
+  [14:32:07] ./api/client.ts
+  + NEW   BZ-HYG-01 [CRITICAL] [CONFIRMED] hardcoded-api-key  ./api/client.ts:14
+    │ API key assigned as a string literal. This value will be included in compiled
+    │ output and is trivially extractable from any build artifact or public repo.
+    │
+    │ → Fix: Move the value to an environment variable and access it via
+    │        process.env.OPENAI_API_KEY or a secrets manager at runtime.
+    │  Refs: OWASP ASI03 · CWE-798 · OWASP A07:2021
+
+  → (4ms)  + 1 new  ·  - 0 fixed  ·  Health: 0/100
 ```
 
 > **AI writes → Tuora catches → you paste → AI fixes.** No context switching, no separate audit step, no gates blocking your build.
